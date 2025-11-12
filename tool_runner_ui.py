@@ -203,7 +203,8 @@ class ToolRunnerUI(tk.Tk):
         """
         Initialize the ToolRunnerUI, creating all widgets, styles, and logic.
         """
-        super().__init__()\n        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        super().__init__()
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.title("Project Tools Runner")
         self.geometry("900x600")
 
