@@ -8,7 +8,7 @@ skipped, and excluded content. Compatible with Windows, Linux, and macOS.
 
 import os
 import tempfile
-from typing import Dict, List, Set, Optional, Callable, Any
+from typing import Dict, List, Set, Optional, Callable, Any, Tuple
 from pathlib import Path  # For cross-platform path handling
 
 
@@ -46,6 +46,50 @@ class FileLoaderTool:
         except Exception:
             # Fallback to print if provided logger fails
             print(message)
+
+    def _is_probably_text(self, file_path: Path, sample_size: int = 2048) -> bool:
+        """
+        Heuristic to detect text vs binary by sampling bytes.
+        - Returns False if NUL byte present.
+        - Otherwise checks ratio of printable/whitespace bytes.
+        """
+        try:
+            with file_path.open('rb') as fh:
+                data = fh.read(sample_size)
+        except Exception:
+            # If we can't read as bytes, treat as non-text to be safe.
+            return False
+        if not data:
+            return True
+        if b"\x00" in data:
+            return False
+        # Count control bytes excluding common whitespace
+        controls = 0
+        for b in data:
+            if b < 32 and b not in (9, 10, 12, 13):  # exclude \t, \n, \f, \r
+                controls += 1
+            elif b == 127:  # DEL
+                controls += 1
+        return (controls / max(1, len(data))) <= 0.30
+
+    def _read_text_with_fallback(self, file_path: Path) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Attempt to read text using a sequence of encodings.
+        Returns (text, encoding_used). If it must fall back to replacement,
+        returns ('decoded text', 'fallback-replace:<encoding>'). If it fails,
+        returns (None, None).
+        """
+        encodings = ['utf-8', 'utf-8-sig', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252', 'latin-1']
+        for enc in encodings:
+            try:
+                return (file_path.read_text(encoding=enc, errors='strict'), enc)
+            except Exception:
+                continue
+        # Last resort: decode with replacement to avoid crashing the run
+        try:
+            return (file_path.read_text(encoding='utf-8', errors='replace'), 'fallback-replace:utf-8')
+        except Exception:
+            return (None, None)
 
     def load_files_in_directory(
         self,
@@ -104,11 +148,21 @@ class FileLoaderTool:
                 if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
                     return file_contents
                 try:
-                    # Attempt to read as UTF-8 text
-                    content = file_path.read_text(encoding='utf-8')
+                    # Skip likely binary files early
+                    if not self._is_probably_text(file_path):
+                        msg = f"Skipped (binary) {file_path}"
+                        self.skipped_files.append(msg)
+                        self._log(msg)
+                        continue
+                    # Attempt to read using encoding fallback strategy
+                    content, used = self._read_text_with_fallback(file_path)
+                    if content is None:
+                        raise UnicodeDecodeError('unknown', b'', 0, 1, 'unable to decode with fallbacks')
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
                     processed_count += 1
+                    if used and used.startswith('fallback-replace'):
+                        self._log(f"Decoded with replacement: {file_path} ({used})")
                 except (UnicodeDecodeError, FileNotFoundError, PermissionError) as e:
                     error_msg = f"Skipped {file_path} due to error: {e}"
                     self.skipped_files.append(error_msg)
@@ -166,8 +220,10 @@ class FileLoaderTool:
         processed_sorted = sorted(self.processed_files, key=lambda s: s.casefold())
         excluded_sorted = sorted(self.excluded_dirs, key=lambda s: s.casefold())
         skipped_sorted = sorted(self.skipped_files, key=lambda s: s.casefold())
+        summary_line = f"Summary: processed={len(processed_sorted)} excluded_dirs={len(excluded_sorted)} skipped={len(skipped_sorted)}\n\n"
 
         def _write(fh):
+            fh.write(summary_line)
             fh.write("Processed Files:\n")
             for file in processed_sorted:
                 fh.write(f"{file}\n")

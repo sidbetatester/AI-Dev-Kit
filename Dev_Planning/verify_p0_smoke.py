@@ -102,9 +102,26 @@ def test_structure_progress() -> None:
 def main() -> None:
     test_file_loader_order_and_atomic()
     test_structure_progress()
+    # P0-03: encoding + binary robustness
+    # Create a small temp project with utf-8, cp1252, and a binary file
+    base = Path(tempfile.mkdtemp(prefix="p003_suite_"))
+    try:
+        proj = base / "proj"
+        proj.mkdir()
+        (proj / "utf8.txt").write_text("hello π", encoding="utf-8")
+        (proj / "cp1252.txt").write_bytes("“quoted”".encode("cp1252"))
+        (proj / "bin.dat").write_bytes(b"\x00\x01\x02\x03")
+
+        loader = FileLoaderTool(str(proj))
+        files = loader.load_files_in_directory(str(proj))
+        names = sorted(Path(p).name for p in files)
+        assert "utf8.txt" in names and "cp1252.txt" in names, "Text files missing after load"
+        assert all("bin.dat" not in s for s in loader.processed_files), "Binary unexpectedly processed"
+        assert any("bin.dat" in s for s in loader.skipped_files), "Binary not reported as skipped"
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
     print("P0 smoke: PASS")
 
 
 if __name__ == "__main__":
     main()
-
