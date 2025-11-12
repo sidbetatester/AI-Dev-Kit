@@ -203,7 +203,7 @@ class ToolRunnerUI(tk.Tk):
         """
         Initialize the ToolRunnerUI, creating all widgets, styles, and logic.
         """
-        super().__init__()
+        super().__init__()\n        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.title("Project Tools Runner")
         self.geometry("900x600")
 
@@ -707,7 +707,6 @@ class ToolRunnerUI(tk.Tk):
             target=self._worker_run,
             args=(project_root, sel_file_loader, file_loader_output, log_output,
                   sel_project_structure, structure_output),
-            daemon=True,
         )
         self.worker_thread.start()
         # Start polling UI queue
@@ -788,6 +787,44 @@ class ToolRunnerUI(tk.Tk):
         self.status_label.config(text="Ready")
         self.btn_run.config(state=tk.NORMAL)
         self.cancel_btn.config(state=tk.DISABLED)
+        # Best-effort worker cleanup
+        try:
+            if self.worker_thread is not None and self.worker_thread.is_alive():
+                self.worker_thread.join(timeout=0.1)
+        except Exception:
+            pass
+
+    def on_closing(self) -> None:
+        """
+        Handle window close: if a run is active, request cancel and join the
+        worker thread briefly before destroying the window to avoid abrupt
+        termination and partial outputs.
+        """
+        try:
+            # If no worker or not running, safe to close immediately
+            if not self.running or self.worker_thread is None or not self.worker_thread.is_alive():
+                self.destroy()
+                return
+
+            # Prompt the user for confirmation
+            if messagebox.askyesno("Exit", "A run is in progress. Cancel and exit?"):
+                try:
+                    self.cancel_run()
+                except Exception:
+                    pass
+                try:
+                    # Join briefly to allow clean shutdown
+                    self.worker_thread.join(timeout=2.0)
+                except Exception:
+                    pass
+                # Proceed to close regardless; background thread should exit soon
+                self.destroy()
+            else:
+                # User chose not to exit
+                return
+        except Exception:
+            # Fallback to best-effort close
+            self.destroy()
 
     def _worker_run(self,
                     project_root: str,
