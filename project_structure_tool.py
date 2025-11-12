@@ -225,7 +225,15 @@ class ProjectStructureTool:
         except PermissionError:
             self._log(f"Warning: Permission denied accessing directory {current_path}")
         except OSError as e:
-            self._log(f"Error accessing directory {current_path}: {str(e)}")
+            # Detect long-path issues for clearer logging
+            msg = str(e)
+            try:
+                import errno
+                if getattr(e, 'errno', None) == errno.ENAMETOOLONG or getattr(e, 'winerror', None) in (206,):
+                    msg = "Path too long"
+            except Exception:
+                pass
+            self._log(f"Error accessing directory {current_path}: {msg}")
 
         return structure
 
