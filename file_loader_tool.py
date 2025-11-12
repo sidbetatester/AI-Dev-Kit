@@ -11,6 +11,12 @@ import tempfile
 from typing import Dict, List, Set, Optional, Callable, Any, Tuple
 from pathlib import Path  # For cross-platform path handling
 
+# Default directory names to exclude from traversal
+DEFAULT_EXCLUDE_DIRS: Set[str] = {
+    'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+}
+
 
 class FileLoaderTool:
     """
@@ -27,7 +33,8 @@ class FileLoaderTool:
         excluded_dirs: List of directories that were excluded from processing.
     """
 
-    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None,
+                 exclude_dirs: Optional[Set[str]] = None) -> None:
         """
         Initialize the FileLoaderTool with a project root directory.
 
@@ -39,6 +46,7 @@ class FileLoaderTool:
         self.skipped_files: List[str] = []
         self.excluded_dirs: List[str] = []
         self._logger: Callable[[str], None] = logger if logger is not None else print
+        self.exclude_dirs: Set[str] = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
 
     def _log(self, message: str) -> None:
         try:
@@ -113,10 +121,6 @@ class FileLoaderTool:
             A dictionary mapping file paths to their text contents.
         """
         file_contents: Dict[str, str] = {}
-        exclude_dirs: Set[str] = {
-            'venv', '__pycache__', '.venv',
-            'env', 'node_modules', '.git'
-        }
         
         directory_path = Path(directory).resolve()
         
@@ -127,17 +131,17 @@ class FileLoaderTool:
             root_path = Path(root)
             
             # Track and remove excluded directories
-            removed_dirs = set(d for d in dirs if d in exclude_dirs)
+            removed_dirs = set(d for d in dirs if d in self.exclude_dirs)
             if removed_dirs:
                 self.excluded_dirs.extend(str(root_path / d) for d in removed_dirs)
             
             # Update dirs in place to exclude unwanted directories
-            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
             # Deterministic traversal order: sort directories (case-insensitive)
             dirs.sort(key=lambda s: s.casefold())
             
             # Skip processing if the current directory is in an excluded path
-            if any(ex_dir in root_path.parts for ex_dir in exclude_dirs):
+            if any(ex_dir in root_path.parts for ex_dir in self.exclude_dirs):
                 continue
 
             # Progress per directory (optional)

@@ -13,6 +13,12 @@ import platform
 import stat
 from typing import Dict, Any, List, TypedDict, Optional, Callable
 
+# Default directory names to exclude from traversal
+DEFAULT_EXCLUDE_DIRS: set[str] = {
+    'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+}
+
 class FileInfo(TypedDict):
     """Type definition for file metadata"""
     name: str
@@ -33,7 +39,8 @@ class ProjectStructureTool:
     this structure to/from disk. Works across different operating systems.
     """
 
-    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None,
+                 exclude_dirs: Optional[set[str]] = None) -> None:
         """
         Initialize the ProjectStructureTool with a root directory.
 
@@ -50,6 +57,7 @@ class ProjectStructureTool:
         self.project_map: Dict[str, DirectoryStructure] = {}
         self.system: str = platform.system().lower()
         self._logger: Callable[[str], None] = logger if logger is not None else print
+        self.exclude_dirs: set[str] = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
 
     def _log(self, message: str) -> None:
         try:
@@ -185,7 +193,7 @@ class ProjectStructureTool:
 
             with os.scandir(current_path) as entries:
                 # Convert to list to avoid iterator invalidation issues on Windows
-                entries_list = list(entries)
+                entries_list = sorted(list(entries), key=lambda e: e.name.casefold())
                 for entry in entries_list:
                     try:
                         # Update progress for each encountered entry (file or directory)
@@ -195,6 +203,9 @@ class ProjectStructureTool:
                                 progress_callback('project_structure', counters.get('processed', 0), counters.get('total', 0), entry.path)
 
                         if entry.is_dir(follow_symlinks=False):
+                            # Skip excluded directories by name
+                            if entry.name in self.exclude_dirs:
+                                continue
                             # Skip symlinks to avoid cycles
                             structure["subfolders"][entry.name] = self._build_recursive(
                                 entry.path,
