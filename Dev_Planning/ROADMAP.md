@@ -7,6 +7,9 @@ Progress
   - Implemented background worker, queue-based UI updates, progress bar, and Cancel in `tool_runner_ui.py`.
   - Added logger/progress/cancel plumbing in `file_loader_tool.py` and `project_structure_tool.py`.
   - Added real progress reporting for the structure scan (pre-count + per-entry increments).
+- Completed: P0‑02 Atomic Output Writes + Deterministic Ordering
+  - Atomic temp-write + `os.replace` in `file_loader_tool.py` for concatenated output and logs.
+  - Sorted traversal and deterministic output/log ordering.
 
 Purpose: Deliver valuable UX, reliability, and customization improvements in safe, reversible steps. Each task below is independently developable and testable in a single session.
 
@@ -49,7 +52,7 @@ P0‑01: Off‑Main‑Thread Execution + Progress + Cancel — Completed
 - Notes: Use threading + queue; disable controls while running.
 - Estimate: M
 
-P0‑02: Atomic Output Writes
+P0‑02: Atomic Output Writes — Completed
 - Summary: Write to temp file then atomic rename; deterministic file ordering.
 - Files: file_loader_tool.py
 - Acceptance
