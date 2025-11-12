@@ -17,6 +17,12 @@ DEFAULT_EXCLUDE_DIRS: Set[str] = {
     '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
 }
 
+# Default directory names to exclude from traversal
+DEFAULT_EXCLUDE_DIRS: Set[str] = {
+    'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+}
+
 
 class FileLoaderTool:
     """
@@ -62,7 +68,7 @@ class FileLoaderTool:
         - Otherwise checks ratio of printable/whitespace bytes.
         """
         try:
-            with file_path.open('rb') as fh:
+            with open(self._safe_fs_path(file_path), 'rb') as fh:
                 data = fh.read(sample_size)
         except Exception:
             # If we can't read as bytes, treat as non-text to be safe.
@@ -91,15 +97,46 @@ class FileLoaderTool:
         last_err: Optional[Exception] = None
         for enc in encodings:
             try:
-                return (file_path.read_text(encoding=enc, errors='strict'), enc, None)
+                with open(self._safe_fs_path(file_path), 'r', encoding=enc, errors='strict') as fh:
+                    return (fh.read(), enc, None)
             except Exception as e:
                 last_err = e
                 continue
         # Last resort: decode with replacement to avoid crashing the run
         try:
-            return (file_path.read_text(encoding='utf-8', errors='replace'), 'fallback-replace:utf-8', None)
+            with open(self._safe_fs_path(file_path), 'r', encoding='utf-8', errors='replace') as fh:
+                return (fh.read(), 'fallback-replace:utf-8', None)
         except Exception as e:
             return (None, None, last_err or e)
+
+    def _safe_fs_path(self, p: Path) -> str:
+        r"""
+        Return a filesystem-safe string path.
+        On Windows, prefix with \\?\ for long absolute paths or convert UNC
+        to \\?\UNC\server\share form.
+        """
+        s = str(p)
+        if os.name != 'nt':
+            return s
+        abs_s = str(p.resolve())
+        if abs_s.startswith('\\\\?\\'):
+            return abs_s
+        if abs_s.startswith('\\\\'):
+            return "\\\\?\\UNC\\" + abs_s.lstrip('\\')
+        return "\\\\?\\" + abs_s
+
+    def _is_path_too_long_error(self, e: Exception) -> bool:
+        try:
+            import errno
+            if isinstance(e, OSError):
+                if getattr(e, 'errno', None) == errno.ENAMETOOLONG:
+                    return True
+                winerr = getattr(e, 'winerror', None)
+                if winerr in (206,):  # ERROR_FILENAME_EXCED_RANGE
+                    return True
+        except Exception:
+            pass
+        return False
 
     def load_files_in_directory(
         self,
@@ -170,8 +207,11 @@ class FileLoaderTool:
                     processed_count += 1
                     if used and used.startswith('fallback-replace'):
                         self._log(f"Decoded with replacement: {file_path} ({used})")
-                except (UnicodeDecodeError, FileNotFoundError, PermissionError) as e:
-                    error_msg = f"Skipped {file_path} due to error: {e}"
+                except (UnicodeDecodeError, FileNotFoundError, PermissionError, OSError) as e:
+                    if isinstance(e, OSError) and self._is_path_too_long_error(e):
+                        error_msg = f"Skipped (path too long) {file_path}"
+                    else:
+                        error_msg = f"Skipped {file_path} due to error: {e}"
                     self.skipped_files.append(error_msg)
                     self._log(error_msg)
         
