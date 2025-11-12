@@ -10,6 +10,10 @@ Progress
 - Completed: P0‑02 Atomic Output Writes + Deterministic Ordering
   - Atomic temp-write + `os.replace` in `file_loader_tool.py` for concatenated output and logs.
   - Sorted traversal and deterministic output/log ordering.
+- Completed: P0‑03 Encoding Detection & Robust Skips
+  - Heuristic binary detection (NUL and control-byte ratio) and skip with log entry.
+  - Multi-encoding read strategy (`utf-8`, BOM, UTF-16, `cp1252`, `latin-1`) with final replace fallback.
+  - Log includes summary counts (processed/excluded/skipped).
 
 Purpose: Deliver valuable UX, reliability, and customization improvements in safe, reversible steps. Each task below is independently developable and testable in a single session.
 
@@ -61,7 +65,7 @@ P0‑02: Atomic Output Writes — Completed
   - Crash simulations leave no corrupt final files.
 - Estimate: S
 
-P0‑03: Encoding Detection & Robust Skips
+P0‑03: Encoding Detection & Robust Skips — Completed
 - Summary: Add encoding detection with fallback; log unreadable files; continue.
 - Files: file_loader_tool.py
 - Acceptance
