@@ -14,6 +14,10 @@ Progress
   - Heuristic binary detection (NUL and control-byte ratio) and skip with log entry.
   - Multi-encoding read strategy (`utf-8`, BOM, UTF-16, `cp1252`, `latin-1`) with final replace fallback.
   - Log includes summary counts (processed/excluded/skipped).
+- Completed: P0‑05 Default Exclude Rules + UI Visibility
+  - UI toggle to apply default excludes; label shows active rules.
+  - Exclude set threaded into both tools; traversal skips excluded dirs.
+  - Deterministic entry ordering in structure tool for stable output.
 
 Purpose: Deliver valuable UX, reliability, and customization improvements in safe, reversible steps. Each task below is independently developable and testable in a single session.
 
@@ -82,7 +86,7 @@ P0‑04: Long Paths & Permission Resilience (Windows‑friendly)
   - Long paths do not crash scanning; skipped when necessary.
 - Estimate: S
 
-P0‑05: Default Exclude Rules + UI Visibility
+P0‑05: Default Exclude Rules + UI Visibility — Completed
 - Summary: Apply sensible default excludes (.git, venv, node_modules, .idea); show active rules in UI.
 - Files: tool_runner_ui.py, file_loader_tool.py, project_structure_tool.py
 - Acceptance
