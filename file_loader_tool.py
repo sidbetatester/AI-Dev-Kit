@@ -72,7 +72,7 @@ class FileLoaderTool:
                 controls += 1
         return (controls / max(1, len(data))) <= 0.30
 
-    def _read_text_with_fallback(self, file_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    def _read_text_with_fallback(self, file_path: Path) -> Tuple[Optional[str], Optional[str], Optional[Exception]]:
         """
         Attempt to read text using a sequence of encodings.
         Returns (text, encoding_used). If it must fall back to replacement,
@@ -80,16 +80,18 @@ class FileLoaderTool:
         returns (None, None).
         """
         encodings = ['utf-8', 'utf-8-sig', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252', 'latin-1']
+        last_err: Optional[Exception] = None
         for enc in encodings:
             try:
-                return (file_path.read_text(encoding=enc, errors='strict'), enc)
-            except Exception:
+                return (file_path.read_text(encoding=enc, errors='strict'), enc, None)
+            except Exception as e:
+                last_err = e
                 continue
         # Last resort: decode with replacement to avoid crashing the run
         try:
-            return (file_path.read_text(encoding='utf-8', errors='replace'), 'fallback-replace:utf-8')
-        except Exception:
-            return (None, None)
+            return (file_path.read_text(encoding='utf-8', errors='replace'), 'fallback-replace:utf-8', None)
+        except Exception as e:
+            return (None, None, last_err or e)
 
     def load_files_in_directory(
         self,
@@ -155,9 +157,10 @@ class FileLoaderTool:
                         self._log(msg)
                         continue
                     # Attempt to read using encoding fallback strategy
-                    content, used = self._read_text_with_fallback(file_path)
+                    content, used, err = self._read_text_with_fallback(file_path)
                     if content is None:
-                        raise UnicodeDecodeError('unknown', b'', 0, 1, 'unable to decode with fallbacks')
+                        # Propagate meaningful failure preserving context
+                        raise RuntimeError(f"Failed to decode text file: {file_path}") from err
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
                     processed_count += 1

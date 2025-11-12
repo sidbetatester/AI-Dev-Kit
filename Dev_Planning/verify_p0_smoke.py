@@ -17,6 +17,13 @@ import tempfile
 from pathlib import Path
 from typing import List, Tuple
 
+import sys
+from pathlib import Path as _PathHack
+# Ensure repository root is on sys.path for direct script execution
+_repo_root = _PathHack(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 from file_loader_tool import FileLoaderTool
 from project_structure_tool import ProjectStructureTool
 
