@@ -29,7 +29,7 @@ import sys
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from file_loader_tool import FileLoaderTool
+from file_loader_tool import FileLoaderTool, DEFAULT_EXCLUDE_DIRS
 from project_structure_tool import ProjectStructureTool
 
 
@@ -275,6 +275,20 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(chk_loader, "Concatenate all project files into a single text file.")
         create_tooltip(chk_struct, "Generate & display a JSON project structure in an ASCII tree.")
 
+        # Default exclude rules visibility/toggle
+        self.use_default_excludes = tk.BooleanVar(value=True)
+        excludes_frame = ttk.Frame(self.main_frame)
+        excludes_frame.grid(row=3, column=1, sticky=tk.W)
+        chk_default_ex = ttk.Checkbutton(
+            excludes_frame,
+            text="Apply default excludes",
+            variable=self.use_default_excludes,
+            command=self._on_toggle_default_excludes,
+        )
+        chk_default_ex.pack(side=tk.LEFT, padx=(0, 10))
+        self.excludes_label = ttk.Label(excludes_frame, text=self._get_excludes_text())
+        self.excludes_label.pack(side=tk.LEFT)
+
         # Right side: run/clear/hide/about
         action_buttons_frame = ttk.Frame(self.main_frame)
         action_buttons_frame.grid(row=2, column=2, rowspan=4, sticky=tk.NE)
@@ -341,24 +355,24 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(btn_about, "Information about this tool, author, and license.")
 
         # 3) File/Structure/Log outputs
-        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=4, column=0, sticky=tk.W)
         self.file_loader_output = ttk.Entry(self.main_frame, width=50)
-        self.file_loader_output.grid(row=3, column=1, sticky=tk.EW)
+        self.file_loader_output.grid(row=4, column=1, sticky=tk.EW)
         self.file_loader_output.insert(0, "loaded_files_output.txt")
 
-        ttk.Label(self.main_frame, text="Structure Output:").grid(row=4, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Structure Output:").grid(row=5, column=0, sticky=tk.W)
         self.structure_output = ttk.Entry(self.main_frame, width=50)
-        self.structure_output.grid(row=4, column=1, sticky=tk.EW)
+        self.structure_output.grid(row=5, column=1, sticky=tk.EW)
         self.structure_output.insert(0, "project_structure.json")
 
-        ttk.Label(self.main_frame, text="Log File:").grid(row=5, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Log File:").grid(row=6, column=0, sticky=tk.W)
         self.log_file_output = ttk.Entry(self.main_frame, width=50)
-        self.log_file_output.grid(row=5, column=1, sticky=tk.EW)
+        self.log_file_output.grid(row=6, column=1, sticky=tk.EW)
         self.log_file_output.insert(0, "file_loader_log.txt")
 
         # 4) PanedWindow => top=tree_panel, bottom=console_panel
         self.paned = ttk.Panedwindow(self.main_frame, orient=tk.VERTICAL)
-        self.paned.grid(row=7, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
+        self.paned.grid(row=8, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
 
         self.tree_panel = ttk.Frame(self.paned)
         self.paned.add(self.tree_panel, weight=3)
@@ -367,7 +381,7 @@ class ToolRunnerUI(tk.Tk):
         self.paned.add(self.console_panel, weight=1)
 
         self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(7, weight=1)
+        self.main_frame.rowconfigure(8, weight=1)
 
         # 5) Top Pane: Tree label
         self.tree_label = ttk.Label(self.tree_panel, text="Project Tree", font=("Arial", 12, "bold"))
@@ -563,6 +577,17 @@ class ToolRunnerUI(tk.Tk):
             cols.append("modified")
         self.tree["displaycolumns"] = cols
 
+    def _get_excludes_text(self) -> str:
+        if getattr(self, 'use_default_excludes', None) and self.use_default_excludes.get():
+            return "Excluding: " + ", ".join(sorted(DEFAULT_EXCLUDE_DIRS))
+        return "Excluding: None"
+
+    def _on_toggle_default_excludes(self) -> None:
+        try:
+            self.excludes_label.configure(text=self._get_excludes_text())
+        except Exception:
+            pass
+
     ################################################
     # Two-click "Collapse All" logic
     ################################################
@@ -699,6 +724,7 @@ class ToolRunnerUI(tk.Tk):
         # Capture selections
         sel_file_loader = self.tool_vars['file_loader'].get()
         sel_project_structure = self.tool_vars['project_structure'].get()
+        excludes = set(DEFAULT_EXCLUDE_DIRS) if self.use_default_excludes.get() else set()
         file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
         log_output = os.path.join(output_dir, self.log_file_output.get())
         structure_output = os.path.join(output_dir, self.structure_output.get())
@@ -707,7 +733,7 @@ class ToolRunnerUI(tk.Tk):
         self.worker_thread = threading.Thread(
             target=self._worker_run,
             args=(project_root, sel_file_loader, file_loader_output, log_output,
-                  sel_project_structure, structure_output),
+                  sel_project_structure, structure_output, excludes),
         )
         self.worker_thread.start()
         # Start polling UI queue
@@ -833,11 +859,12 @@ class ToolRunnerUI(tk.Tk):
                     file_loader_output: str,
                     log_output: str,
                     sel_project_structure: bool,
-                    structure_output: str) -> None:
+                    structure_output: str,
+                    excludes: set[str]) -> None:
         try:
             # 1) File Loader
             if sel_file_loader:
-                loader = FileLoaderTool(project_root, logger=self._enqueue_log)
+                loader = FileLoaderTool(project_root, logger=self._enqueue_log, exclude_dirs=excludes)
                 files_dict = loader.load_files_in_directory(
                     project_root,
                     progress_callback=self._progress_callback,
@@ -852,7 +879,7 @@ class ToolRunnerUI(tk.Tk):
 
             # 2) Project Structure
             if sel_project_structure:
-                structure_tool = ProjectStructureTool(project_root, logger=self._enqueue_log)
+                structure_tool = ProjectStructureTool(project_root, logger=self._enqueue_log, exclude_dirs=excludes)
                 structure_tool.build_project_structure(
                     progress_callback=self._progress_callback,
                     cancel_event=self.cancel_event,
