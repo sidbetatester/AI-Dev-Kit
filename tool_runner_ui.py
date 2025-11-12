@@ -583,10 +583,19 @@ class ToolRunnerUI(tk.Tk):
         return "Excluding: None"
 
     def _on_toggle_default_excludes(self) -> None:
-        try:
-            self.excludes_label.configure(text=self._get_excludes_text())
-        except Exception:
-            pass
+        # Guard against early init/teardown where label may not exist yet
+        if hasattr(self, 'excludes_label') and self.excludes_label is not None:
+            try:
+                # Only update if widget still exists in the UI
+                if self.excludes_label.winfo_exists():
+                    self.excludes_label.configure(text=self._get_excludes_text())
+            except Exception as e:
+                # Log instead of silently swallowing unexpected errors
+                print(f"Warning: failed to update excludes label: {e}")
+        else:
+            # During initialization before label creation, it is safe to ignore
+            # because the label text will be set when the widget is created.
+            return
 
     ################################################
     # Two-click "Collapse All" logic
