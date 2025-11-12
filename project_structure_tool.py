@@ -11,7 +11,7 @@ import json
 import datetime
 import platform
 import stat
-from typing import Dict, Any, List, TypedDict, Optional
+from typing import Dict, Any, List, TypedDict, Optional, Callable
 
 class FileInfo(TypedDict):
     """Type definition for file metadata"""
@@ -33,7 +33,7 @@ class ProjectStructureTool:
     this structure to/from disk. Works across different operating systems.
     """
 
-    def __init__(self, project_root: str) -> None:
+    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None) -> None:
         """
         Initialize the ProjectStructureTool with a root directory.
 
@@ -49,6 +49,26 @@ class ProjectStructureTool:
         self.project_root: str = project_root
         self.project_map: Dict[str, DirectoryStructure] = {}
         self.system: str = platform.system().lower()
+        self._logger: Callable[[str], None] = logger if logger is not None else print
+
+    def _log(self, message: str) -> None:
+        try:
+            self._logger(message)
+        except Exception:
+            print(message)
+
+    def _count_items(self, root_path: str) -> int:
+        """
+        Count total items (files + directories) under root_path for progress reporting.
+        Returns 0 if counting fails; callers may fall back to indeterminate progress.
+        """
+        total = 0
+        try:
+            for _root, dirs, files in os.walk(root_path):
+                total += len(dirs) + len(files)
+        except Exception:
+            return 0
+        return total
 
     def _format_datetime(self, timestamp: float) -> str:
         """
@@ -138,7 +158,10 @@ class ProjectStructureTool:
             permissions=permissions
         )
 
-    def _build_recursive(self, current_path: str) -> DirectoryStructure:
+    def _build_recursive(self, current_path: str,
+                         progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+                         cancel_event: Optional[Any] = None,
+                         counters: Optional[Dict[str, int]] = None) -> DirectoryStructure:
         """
         Recursively build the structure for the current directory.
 
@@ -154,31 +177,50 @@ class ProjectStructureTool:
         }
 
         try:
+            # Cooperative cancellation
+            if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
+                return structure
+
+            # Initial state notice is noisy; prefer per-entry increments below.
+
             with os.scandir(current_path) as entries:
                 # Convert to list to avoid iterator invalidation issues on Windows
                 entries_list = list(entries)
                 for entry in entries_list:
                     try:
+                        # Update progress for each encountered entry (file or directory)
+                        if counters is not None:
+                            counters['processed'] = counters.get('processed', 0) + 1
+                            if progress_callback is not None:
+                                progress_callback('project_structure', counters.get('processed', 0), counters.get('total', 0), entry.path)
+
                         if entry.is_dir(follow_symlinks=False):
                             # Skip symlinks to avoid cycles
-                            structure["subfolders"][entry.name] = self._build_recursive(entry.path)
+                            structure["subfolders"][entry.name] = self._build_recursive(
+                                entry.path,
+                                progress_callback=progress_callback,
+                                cancel_event=cancel_event,
+                                counters=counters
+                            )
                         else:
                             # Process regular files only
                             if entry.is_file(follow_symlinks=False):
                                 structure["files"].append(self._get_file_info(entry))
                     except PermissionError:
-                        print(f"Warning: Permission denied accessing {entry.path}")
+                        self._log(f"Warning: Permission denied accessing {entry.path}")
                     except OSError as e:
-                        print(f"Error accessing {entry.path}: {str(e)}")
+                        self._log(f"Error accessing {entry.path}: {str(e)}")
                         
         except PermissionError:
-            print(f"Warning: Permission denied accessing directory {current_path}")
+            self._log(f"Warning: Permission denied accessing directory {current_path}")
         except OSError as e:
-            print(f"Error accessing directory {current_path}: {str(e)}")
+            self._log(f"Error accessing directory {current_path}: {str(e)}")
 
         return structure
 
-    def build_project_structure(self) -> Dict[str, DirectoryStructure]:
+    def build_project_structure(self,
+                                progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+                                cancel_event: Optional[Any] = None) -> Dict[str, DirectoryStructure]:
         """
         Build the complete project structure starting from the root directory.
 
@@ -187,8 +229,18 @@ class ProjectStructureTool:
         """
         # Normalize path separators for consistency across platforms
         root_basename = os.path.basename(os.path.normpath(self.project_root))
+
+        counters: Optional[Dict[str, int]] = None
+        if progress_callback is not None:
+            total = self._count_items(self.project_root)
+            if total > 0:
+                counters = {"processed": 0, "total": total}
+
         self.project_map = {
-            root_basename: self._build_recursive(self.project_root)
+            root_basename: self._build_recursive(self.project_root,
+                                                 progress_callback=progress_callback,
+                                                 cancel_event=cancel_event,
+                                                 counters=counters)
         }
         return self.project_map
 
@@ -209,7 +261,7 @@ class ProjectStructureTool:
             
             with open(output_file, 'w', encoding='utf-8') as json_file:
                 json.dump(self.project_map, json_file, indent=4)
-            print(f"Project structure saved to {output_file}")
+            self._log(f"Project structure saved to {output_file}")
             
         except IOError as e:
             raise IOError(f"Failed to save project structure: {str(e)}")
@@ -234,7 +286,7 @@ class ProjectStructureTool:
             
             with open(input_file, 'r', encoding='utf-8') as json_file:
                 self.project_map = json.load(json_file)
-            print(f"Project structure loaded from {input_file}")
+            self._log(f"Project structure loaded from {input_file}")
             return self.project_map
             
         except FileNotFoundError:

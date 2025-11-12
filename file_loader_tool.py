@@ -7,7 +7,7 @@ skipped, and excluded content. Compatible with Windows, Linux, and macOS.
 """
 
 import os
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional, Callable, Any
 from pathlib import Path  # For cross-platform path handling
 
 
@@ -26,7 +26,7 @@ class FileLoaderTool:
         excluded_dirs: List of directories that were excluded from processing.
     """
 
-    def __init__(self, project_root: str) -> None:
+    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None) -> None:
         """
         Initialize the FileLoaderTool with a project root directory.
 
@@ -37,8 +37,21 @@ class FileLoaderTool:
         self.processed_files: List[str] = []
         self.skipped_files: List[str] = []
         self.excluded_dirs: List[str] = []
+        self._logger: Callable[[str], None] = logger if logger is not None else print
 
-    def load_files_in_directory(self, directory: str) -> Dict[str, str]:
+    def _log(self, message: str) -> None:
+        try:
+            self._logger(message)
+        except Exception:
+            # Fallback to print if provided logger fails
+            print(message)
+
+    def load_files_in_directory(
+        self,
+        directory: str,
+        progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+        cancel_event: Optional[Any] = None,
+    ) -> Dict[str, str]:
         """
         Recursively load text files from the given directory and its subdirectories.
 
@@ -60,6 +73,9 @@ class FileLoaderTool:
         
         directory_path = Path(directory).resolve()
         
+        processed_count = 0
+        total_estimate = 0  # 0/negative implies unknown
+
         for root, dirs, files in os.walk(directory_path):
             root_path = Path(root)
             
@@ -75,17 +91,24 @@ class FileLoaderTool:
             if any(ex_dir in root_path.parts for ex_dir in exclude_dirs):
                 continue
 
+            # Progress per directory (optional)
+            if progress_callback is not None:
+                progress_callback('file_loader', processed_count, total_estimate, str(root_path))
+
             for file in files:
                 file_path = root_path / file
+                if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
+                    return file_contents
                 try:
                     # Attempt to read as UTF-8 text
                     content = file_path.read_text(encoding='utf-8')
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
+                    processed_count += 1
                 except (UnicodeDecodeError, FileNotFoundError, PermissionError) as e:
                     error_msg = f"Skipped {file_path} due to error: {e}"
                     self.skipped_files.append(error_msg)
-                    print(error_msg)
+                    self._log(error_msg)
         
         return file_contents
 
@@ -111,8 +134,8 @@ class FileLoaderTool:
             for file_path, content in file_contents.items():
                 f.write(f"--- File: {file_path} ---\n")
                 f.write(content + "\n\n")
-        
-        print(f"File contents saved to {output_path}")
+
+        self._log(f"File contents saved to {output_path}")
 
     def save_log(
         self, 
@@ -145,8 +168,8 @@ class FileLoaderTool:
                     f.write(f"{error}\n")
             else:
                 f.write("No files were skipped during processing\n")
-        
-        print(f"Log saved to {log_path}")
+
+        self._log(f"Log saved to {log_path}")
 
 
 if __name__ == "__main__":
