@@ -23,6 +23,8 @@ A comprehensive Tkinter-based GUI for:
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 import os
+import threading
+import queue
 import sys
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -205,6 +207,14 @@ class ToolRunnerUI(tk.Tk):
         self.title("Project Tools Runner")
         self.geometry("900x600")
 
+        # Threading/progress state
+        self.worker_thread: Optional[threading.Thread] = None
+        self.cancel_event: Optional[threading.Event] = None
+        self.status_q: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self.running: bool = False
+        self.progress_var = tk.IntVar(value=0)
+        self._indeterminate: bool = False
+
         # Track hidden states for toggling
         self.tree_hidden = False
         self.console_hidden = False
@@ -268,15 +278,15 @@ class ToolRunnerUI(tk.Tk):
         action_buttons_frame = ttk.Frame(self.main_frame)
         action_buttons_frame.grid(row=2, column=2, rowspan=4, sticky=tk.NE)
 
-        btn_run = ttk.Button(
+        self.btn_run = ttk.Button(
             action_buttons_frame,
             text="Run Tools",
             command=self.run_tools,
             width=13,
             style="Run.TButton"
         )
-        btn_run.pack(anchor="e", pady=(0,5))
-        create_tooltip(btn_run, "Generate the concatenated file and/or JSON structure.")
+        self.btn_run.pack(anchor="e", pady=(0,5))
+        create_tooltip(self.btn_run, "Generate the concatenated file and/or JSON structure.")
 
         btn_clear = ttk.Button(
             action_buttons_frame,
@@ -287,6 +297,17 @@ class ToolRunnerUI(tk.Tk):
         )
         btn_clear.pack(anchor="e", pady=(0,5))
         create_tooltip(btn_clear, "Clears the console output area.")
+
+        # Progress bar + status + Cancel
+        self.progress = ttk.Progressbar(action_buttons_frame, orient=tk.HORIZONTAL, length=160,
+                                        mode='determinate', variable=self.progress_var, maximum=100)
+        self.progress.pack(anchor="e", pady=(0,5))
+        self.status_label = ttk.Label(action_buttons_frame, text="Ready", width=30)
+        self.status_label.pack(anchor="e", pady=(0,5))
+        self.cancel_btn = ttk.Button(action_buttons_frame, text="Cancel", command=self.cancel_run,
+                                     width=13, state=tk.DISABLED)
+        self.cancel_btn.pack(anchor="e", pady=(0,5))
+        create_tooltip(self.cancel_btn, "Cancel the current run.")
 
         btn_hide_tree = ttk.Button(
             action_buttons_frame,
@@ -650,6 +671,9 @@ class ToolRunnerUI(tk.Tk):
         Run whichever tools (File Loader, Project Structure) are selected,
         using the directory paths specified in dir_entry/output_dir_entry.
         """
+        if self.running:
+            return
+
         project_root = self.dir_entry.get()
         output_dir = self.output_dir_entry.get()
 
@@ -657,30 +681,155 @@ class ToolRunnerUI(tk.Tk):
             print("Error: Invalid project directory")
             return
 
+        if not (self.tool_vars['file_loader'].get() or self.tool_vars['project_structure'].get()):
+            print("Nothing selected to run.")
+            return
+
         os.makedirs(output_dir, exist_ok=True)
 
+        # Prepare threading state
+        self.cancel_event = threading.Event()
+        self.running = True
+        self.btn_run.config(state=tk.DISABLED)
+        self.cancel_btn.config(state=tk.NORMAL)
+        self._set_progress_mode(indeterminate=True)
+        self.status_label.config(text="Running...")
+
+        # Capture selections
+        sel_file_loader = self.tool_vars['file_loader'].get()
+        sel_project_structure = self.tool_vars['project_structure'].get()
+        file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
+        log_output = os.path.join(output_dir, self.log_file_output.get())
+        structure_output = os.path.join(output_dir, self.structure_output.get())
+
+        # Start worker
+        self.worker_thread = threading.Thread(
+            target=self._worker_run,
+            args=(project_root, sel_file_loader, file_loader_output, log_output,
+                  sel_project_structure, structure_output),
+            daemon=True,
+        )
+        self.worker_thread.start()
+        # Start polling UI queue
+        self.after(100, self._poll_status)
+
+    def cancel_run(self) -> None:
+        if self.cancel_event is not None and not self.cancel_event.is_set():
+            self.cancel_event.set()
+            # Inform via status queue; worker will also report
+            self.status_q.put({"type": "log", "message": "Cancellation requested..."})
+
+    def _enqueue_log(self, message: str) -> None:
+        self.status_q.put({"type": "log", "message": message})
+
+    def _progress_callback(self, stage: str, current: int, total: int, path: str) -> None:
+        # Only enqueue; UI thread will update controls
+        self.status_q.put({
+            "type": "progress",
+            "stage": stage,
+            "current": current,
+            "total": total,
+            "path": path,
+        })
+
+    def _set_progress_mode(self, indeterminate: bool) -> None:
+        if indeterminate and not self._indeterminate:
+            self.progress.config(mode='indeterminate')
+            self.progress.start(10)
+            self._indeterminate = True
+        elif not indeterminate and self._indeterminate:
+            self.progress.stop()
+            self.progress.config(mode='determinate')
+            self._indeterminate = False
+
+    def _poll_status(self) -> None:
+        # Drain queue and update UI
+        try:
+            while True:
+                item = self.status_q.get_nowait()
+                t = item.get("type")
+                if t == "progress":
+                    total = item.get("total", 0) or 0
+                    if total > 0:
+                        # determinate mode
+                        self._set_progress_mode(indeterminate=False)
+                        current = item.get("current", 0) or 0
+                        pct = max(0, min(100, int((current / total) * 100)))
+                        self.progress_var.set(pct)
+                    else:
+                        self._set_progress_mode(indeterminate=True)
+                    stage = item.get("stage", "")
+                    path = item.get("path", "")
+                    self.status_label.config(text=f"{stage}: {os.path.basename(path)}")
+                elif t == "log":
+                    # Safe to print from UI thread
+                    print(item.get("message", ""))
+                elif t == "ui" and item.get("action") == "load_structure":
+                    self.load_and_display_structure(item.get("path", ""))
+                elif t in ("done", "cancelled", "error"):
+                    # finalize
+                    if t == "done":
+                        print("Operation completed successfully\n")
+                    elif t == "cancelled":
+                        print("Operation cancelled.\n")
+                    else:
+                        print(f"Error: {item.get('message','Unknown error')}\n")
+                    self._finish_run()
+        except queue.Empty:
+            pass
+
+        if self.running:
+            self.after(150, self._poll_status)
+
+    def _finish_run(self) -> None:
+        self.running = False
+        self._set_progress_mode(indeterminate=False)
+        self.progress_var.set(0)
+        self.status_label.config(text="Ready")
+        self.btn_run.config(state=tk.NORMAL)
+        self.cancel_btn.config(state=tk.DISABLED)
+
+    def _worker_run(self,
+                    project_root: str,
+                    sel_file_loader: bool,
+                    file_loader_output: str,
+                    log_output: str,
+                    sel_project_structure: bool,
+                    structure_output: str) -> None:
         try:
             # 1) File Loader
-            if self.tool_vars['file_loader'].get():
-                file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
-                loader = FileLoaderTool(project_root)
-                files_dict = loader.load_files_in_directory(project_root)
+            if sel_file_loader:
+                loader = FileLoaderTool(project_root, logger=self._enqueue_log)
+                files_dict = loader.load_files_in_directory(
+                    project_root,
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    self.status_q.put({"type": "cancelled"})
+                    return
                 loader.save_file_contents(files_dict, file_loader_output)
-                loader.save_log(os.path.join(output_dir, self.log_file_output.get()))
-                print(f"File loader output saved to {file_loader_output}")
+                loader.save_log(log_output)
+                self._enqueue_log(f"File loader output saved to {file_loader_output}")
 
             # 2) Project Structure
-            if self.tool_vars['project_structure'].get():
-                structure_output = os.path.join(output_dir, self.structure_output.get())
-                structure_tool = ProjectStructureTool(project_root)
-                structure_tool.build_project_structure()
+            if sel_project_structure:
+                structure_tool = ProjectStructureTool(project_root, logger=self._enqueue_log)
+                structure_tool.build_project_structure(
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    self.status_q.put({"type": "cancelled"})
+                    return
                 structure_tool.save_project_structure(structure_output)
-                print(f"Project structure saved to {structure_output}")
-                self.load_and_display_structure(structure_output)
+                self._enqueue_log(f"Project structure saved to {structure_output}")
+                # Request UI to load structure
+                self.status_q.put({"type": "ui", "action": "load_structure", "path": structure_output})
 
-            print("Operation completed successfully\n")
+            self.status_q.put({"type": "done"})
         except Exception as e:
-            print(f"Error: {str(e)}")
+            self.status_q.put({"type": "error", "message": str(e)})
 
     def clear_console(self) -> None:
         """
