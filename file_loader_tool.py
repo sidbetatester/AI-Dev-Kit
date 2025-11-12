@@ -7,6 +7,7 @@ skipped, and excluded content. Compatible with Windows, Linux, and macOS.
 """
 
 import os
+import tempfile
 from typing import Dict, List, Set, Optional, Callable, Any
 from pathlib import Path  # For cross-platform path handling
 
@@ -86,6 +87,8 @@ class FileLoaderTool:
             
             # Update dirs in place to exclude unwanted directories
             dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            # Deterministic traversal order: sort directories (case-insensitive)
+            dirs.sort(key=lambda s: s.casefold())
             
             # Skip processing if the current directory is in an excluded path
             if any(ex_dir in root_path.parts for ex_dir in exclude_dirs):
@@ -95,7 +98,8 @@ class FileLoaderTool:
             if progress_callback is not None:
                 progress_callback('file_loader', processed_count, total_estimate, str(root_path))
 
-            for file in files:
+            # Deterministic file order within a directory
+            for file in sorted(files, key=lambda s: s.casefold()):
                 file_path = root_path / file
                 if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
                     return file_contents
@@ -130,11 +134,16 @@ class FileLoaderTool:
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with output_path.open('w', encoding='utf-8') as f:
-            for file_path, content in file_contents.items():
-                f.write(f"--- File: {file_path} ---\n")
-                f.write(content + "\n\n")
+        # Deterministic order by path
+        sorted_paths = sorted(file_contents.keys(), key=lambda s: s.casefold())
 
+        def _write(fh):
+            for file_path in sorted_paths:
+                content = file_contents[file_path]
+                fh.write(f"--- File: {file_path} ---\n")
+                fh.write(content + "\n\n")
+
+        self._atomic_write_text(output_path, _write)
         self._log(f"File contents saved to {output_path}")
 
     def save_log(
@@ -152,24 +161,57 @@ class FileLoaderTool:
         """
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with log_path.open('w', encoding='utf-8') as f:
-            f.write("Processed Files:\n")
-            for file in self.processed_files:
-                f.write(f"{file}\n")
-            
-            f.write("\nExcluded Directories:\n")
-            for dir_path in self.excluded_dirs:
-                f.write(f"{dir_path}\n")
-            
-            f.write("\nSkipped Files:\n")
-            if self.skipped_files:
-                for error in self.skipped_files:
-                    f.write(f"{error}\n")
-            else:
-                f.write("No files were skipped during processing\n")
 
+        # Sort lists for deterministic logs
+        processed_sorted = sorted(self.processed_files, key=lambda s: s.casefold())
+        excluded_sorted = sorted(self.excluded_dirs, key=lambda s: s.casefold())
+        skipped_sorted = sorted(self.skipped_files, key=lambda s: s.casefold())
+
+        def _write(fh):
+            fh.write("Processed Files:\n")
+            for file in processed_sorted:
+                fh.write(f"{file}\n")
+
+            fh.write("\nExcluded Directories:\n")
+            for dir_path in excluded_sorted:
+                fh.write(f"{dir_path}\n")
+
+            fh.write("\nSkipped Files:\n")
+            if skipped_sorted:
+                for error in skipped_sorted:
+                    fh.write(f"{error}\n")
+            else:
+                fh.write("No files were skipped during processing\n")
+
+        self._atomic_write_text(log_path, _write)
         self._log(f"Log saved to {log_path}")
+
+    def _atomic_write_text(self, final_path: Path, write_callback: Callable[[Any], None]) -> None:
+        """
+        Atomically write text to final_path by writing to a temp file and replacing.
+        Ensures best-effort atomicity across platforms using os.replace.
+        """
+        tmp_dir = final_path.parent
+        prefix = final_path.name + "."
+        fd, tmp_name = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=str(tmp_dir))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8', newline='') as fh:
+                write_callback(fh)
+                fh.flush()
+                try:
+                    os.fsync(fh.fileno())
+                except Exception:
+                    # fsync might not be available/necessary on some filesystems
+                    pass
+            os.replace(str(tmp_path), str(final_path))
+        except Exception:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
 
 if __name__ == "__main__":
