@@ -543,16 +543,25 @@ class ToolRunnerUI(tk.Tk):
         self.update_displaycolumns()
 
         # 6) Console Panel
-        self.console_label = ttk.Label(self.console_panel, text="Console Output", font=("Arial", 12, "bold"))
-        self.console_label.pack(side=tk.TOP, anchor="w", padx=5, pady=(5,0))
+        self.console_header = ttk.Frame(self.console_panel)
+        self.console_header.pack(side=tk.TOP, fill=tk.X, padx=5, pady=(5, 0))
+        self.console_label = ttk.Label(self.console_header, text="Console Output", font=("Arial", 12, "bold"))
+        self.console_label.pack(side=tk.LEFT, anchor="w")
+        self.copy_logs_btn = ttk.Button(self.console_header, text="Copy Logs", command=self.copy_logs_to_clipboard, width=12)
+        self.copy_logs_btn.pack(side=tk.RIGHT)
+        create_tooltip(self.copy_logs_btn, "Copy the current console log to the clipboard.")
 
         self.console = scrolledtext.ScrolledText(self.console_panel, height=10)
         self.console.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.console.configure(background="black", foreground="green", insertbackground="green")
+        self.console.tag_configure("INFO", foreground="lightgreen")
+        self.console.tag_configure("WARNING", foreground="yellow")
+        self.console.tag_configure("ERROR", foreground="red")
 
         # Redirect stdout to the console
         self.original_stdout = sys.stdout
         sys.stdout = TextRedirector(self.console, "stdout")
+        self.log_entries: List[str] = []
 
     def __del__(self) -> None:
         """
@@ -591,7 +600,7 @@ class ToolRunnerUI(tk.Tk):
                     self.excludes_label.configure(text=self._get_excludes_text())
             except Exception as e:
                 # Log instead of silently swallowing unexpected errors
-                print(f"Warning: failed to update excludes label: {e}")
+                self._append_log_line("WARNING", f"Failed to update excludes label: {e}")
         else:
             # During initialization before label creation, it is safe to ignore
             # because the label text will be set when the widget is created.
@@ -709,15 +718,15 @@ class ToolRunnerUI(tk.Tk):
         if self.running:
             return
 
-        project_root = self.dir_entry.get()
-        output_dir = self.output_dir_entry.get()
+        project_root = self.dir_entry.get().strip()
+        output_dir = self.output_dir_entry.get().strip()
 
         if not project_root or not os.path.isdir(project_root):
-            print("Error: Invalid project directory")
+            self._append_log_line("ERROR", "Invalid project directory")
             return
 
         if not (self.tool_vars['file_loader'].get() or self.tool_vars['project_structure'].get()):
-            print("Nothing selected to run.")
+            self._append_log_line("WARNING", "Nothing selected to run.")
             return
 
         os.makedirs(output_dir, exist_ok=True)
@@ -752,10 +761,36 @@ class ToolRunnerUI(tk.Tk):
         if self.cancel_event is not None and not self.cancel_event.is_set():
             self.cancel_event.set()
             # Inform via status queue; worker will also report
-            self.status_q.put({"type": "log", "message": "Cancellation requested..."})
+            self.status_q.put({"type": "log", "level": "WARNING", "message": "Cancellation requested..."})
 
-    def _enqueue_log(self, message: str) -> None:
-        self.status_q.put({"type": "log", "message": message})
+    def _enqueue_log(self, message: str, level: str = "INFO") -> None:
+        derived_level, cleaned = self._extract_level_and_message(message)
+        final_level = derived_level or level
+        self.status_q.put({"type": "log", "level": final_level, "message": cleaned})
+
+    def _extract_level_and_message(self, message: str) -> Tuple[Optional[str], str]:
+        """
+        Parse strings like "[WARNING] something" so we can keep level metadata even
+        when upstream callers only provide a single string.
+        """
+        if message.startswith("["):
+            end = message.find("]")
+            if end > 1:
+                candidate = message[1:end].strip()
+                remainder = message[end + 1 :].lstrip()
+                if candidate:
+                    return candidate.upper(), remainder
+        return None, message
+
+    def _append_log_line(self, level: Optional[str], message: str) -> None:
+        tag = (level or "INFO").upper()
+        formatted = f"[{tag}] {message}"
+        self.log_entries.append(formatted)
+        self.console.configure(state="normal")
+        for line in formatted.splitlines():
+            self.console.insert("end", line + "\n", (tag,))
+        self.console.configure(state="disabled")
+        self.console.see("end")
 
     def _progress_callback(self, stage: str, current: int, total: int, path: str) -> None:
         # Only enqueue; UI thread will update controls
@@ -797,18 +832,17 @@ class ToolRunnerUI(tk.Tk):
                     path = item.get("path", "")
                     self.status_label.config(text=f"{stage}: {os.path.basename(path)}")
                 elif t == "log":
-                    # Safe to print from UI thread
-                    print(item.get("message", ""))
+                    self._append_log_line(item.get("level"), item.get("message", ""))
                 elif t == "ui" and item.get("action") == "load_structure":
                     self.load_and_display_structure(item.get("path", ""))
                 elif t in ("done", "cancelled", "error"):
                     # finalize
                     if t == "done":
-                        print("Operation completed successfully\n")
+                        self._append_log_line("INFO", "Operation completed successfully")
                     elif t == "cancelled":
-                        print("Operation cancelled.\n")
+                        self._append_log_line("WARNING", "Operation cancelled.")
                     else:
-                        print(f"Error: {item.get('message','Unknown error')}\n")
+                        self._append_log_line("ERROR", f"Error: {item.get('message','Unknown error')}")
                     self._finish_run()
         except queue.Empty:
             pass
@@ -912,6 +946,19 @@ class ToolRunnerUI(tk.Tk):
         self.console.configure(state="normal")
         self.console.delete(1.0, tk.END)
         self.console.configure(state="disabled")
+        self.log_entries.clear()
+
+    def copy_logs_to_clipboard(self) -> None:
+        """
+        Copy the current console logs (with level prefixes) to the clipboard.
+        """
+        if not self.log_entries:
+            messagebox.showinfo("Copy Logs", "No logs to copy yet.")
+            return
+        snapshot = "\n".join(self.log_entries)
+        self.clipboard_clear()
+        self.clipboard_append(snapshot)
+        self._append_log_line("INFO", "Logs copied to clipboard.")
 
     ################################################
     # Build & Display ASCII Tree (with real root name + folder file counts)
@@ -943,10 +990,10 @@ class ToolRunnerUI(tk.Tk):
                 for key in top_keys:
                     self._build_tree_ascii("", structure[key], [], key)
 
-            print("Project structure loaded in UI")
+            self._append_log_line("INFO", "Project structure loaded in UI")
 
         except Exception as e:
-            print(f"Error loading structure: {str(e)}")
+            self._append_log_line("ERROR", f"Error loading structure: {str(e)}")
             return
 
         # Step 2: restore expansions
@@ -1130,7 +1177,7 @@ class ToolRunnerUI(tk.Tk):
                     for key in top_keys:
                         self._build_tree_ascii("", structure[key], [], key)
             except Exception as e:
-                print(f"Error refreshing tree: {str(e)}")
+                self._append_log_line("ERROR", f"Error refreshing tree: {str(e)}")
 
         # Apply file-type filter
         file_type = self.file_types.get()
@@ -1147,7 +1194,7 @@ class ToolRunnerUI(tk.Tk):
         """
         struct_file = os.path.join(self.output_dir_entry.get(), self.structure_output.get())
         if not os.path.isfile(struct_file):
-            print("No structure file to copy from.")
+            self._append_log_line("WARNING", "No structure file to copy from.")
             return
 
         with open(struct_file, 'r', encoding='utf-8') as f:
@@ -1169,7 +1216,7 @@ class ToolRunnerUI(tk.Tk):
         tree_text = "\n".join(lines)
         self.clipboard_clear()
         self.clipboard_append(tree_text)
-        print("Tree structure (filtered by visible columns) copied to clipboard!")
+        self._append_log_line("INFO", "Tree structure (filtered by visible columns) copied to clipboard!")
 
     def _ascii_export_folder(
         self,

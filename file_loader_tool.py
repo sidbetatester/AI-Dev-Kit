@@ -17,12 +17,6 @@ DEFAULT_EXCLUDE_DIRS: Set[str] = {
     '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
 }
 
-# Default directory names to exclude from traversal
-DEFAULT_EXCLUDE_DIRS: Set[str] = {
-    'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
-    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
-}
-
 
 class FileLoaderTool:
     """
@@ -54,12 +48,17 @@ class FileLoaderTool:
         self._logger: Callable[[str], None] = logger if logger is not None else print
         self.exclude_dirs: Set[str] = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
 
-    def _log(self, message: str) -> None:
+    def _log(self, message: str, level: str = "INFO") -> None:
+        """
+        Emit a structured log message with a level prefix to whatever logger was provided.
+        Default logger is print(), so we encode the level into the string.
+        """
+        formatted = f"[{level.upper()}] {message}"
         try:
-            self._logger(message)
+            self._logger(formatted)
         except Exception:
             # Fallback to print if provided logger fails
-            print(message)
+            print(formatted)
 
     def _is_probably_text(self, file_path: Path, sample_size: int = 2048) -> bool:
         """
@@ -195,7 +194,7 @@ class FileLoaderTool:
                     if not self._is_probably_text(file_path):
                         msg = f"Skipped (binary) {file_path}"
                         self.skipped_files.append(msg)
-                        self._log(msg)
+                        self._log(msg, level="WARNING")
                         continue
                     # Attempt to read using encoding fallback strategy
                     content, used, err = self._read_text_with_fallback(file_path)
@@ -206,14 +205,16 @@ class FileLoaderTool:
                     self.processed_files.append(str(file_path))
                     processed_count += 1
                     if used and used.startswith('fallback-replace'):
-                        self._log(f"Decoded with replacement: {file_path} ({used})")
+                        self._log(f"Decoded with replacement: {file_path} ({used})", level="WARNING")
                 except (UnicodeDecodeError, FileNotFoundError, PermissionError, OSError) as e:
-                    if isinstance(e, OSError) and self._is_path_too_long_error(e):
+                    path_too_long = isinstance(e, OSError) and self._is_path_too_long_error(e)
+                    if path_too_long:
                         error_msg = f"Skipped (path too long) {file_path}"
                     else:
                         error_msg = f"Skipped {file_path} due to error: {e}"
                     self.skipped_files.append(error_msg)
-                    self._log(error_msg)
+                    level = "ERROR" if isinstance(e, OSError) and not path_too_long else "WARNING"
+                    self._log(error_msg, level=level)
         
         return file_contents
 
@@ -245,7 +246,7 @@ class FileLoaderTool:
                 fh.write(content + "\n\n")
 
         self._atomic_write_text(output_path, _write)
-        self._log(f"File contents saved to {output_path}")
+        self._log(f"File contents saved to {output_path}", level="INFO")
 
     def save_log(
         self, 
@@ -287,7 +288,7 @@ class FileLoaderTool:
                 fh.write("No files were skipped during processing\n")
 
         self._atomic_write_text(log_path, _write)
-        self._log(f"Log saved to {log_path}")
+        self._log(f"Log saved to {log_path}", level="INFO")
 
     def _atomic_write_text(self, final_path: Path, write_callback: Callable[[Any], None]) -> None:
         """

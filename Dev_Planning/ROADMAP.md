@@ -14,10 +14,16 @@ Progress
   - Heuristic binary detection (NUL and control-byte ratio) and skip with log entry.
   - Multi-encoding read strategy (`utf-8`, BOM, UTF-16, `cp1252`, `latin-1`) with final replace fallback.
   - Log includes summary counts (processed/excluded/skipped).
+- Completed: P0‑04 Long Paths & Permission Resilience
+  - Applied Windows extended-path prefixes for IO calls in both tools.
+  - Permission and path-too-long errors are caught and logged without aborting runs.
 - Completed: P0‑05 Default Exclude Rules + UI Visibility
   - UI toggle to apply default excludes; label shows active rules.
   - Exclude set threaded into both tools; traversal skips excluded dirs.
   - Deterministic entry ordering in structure tool for stable output.
+- Completed: P0‑06 Structured Logging & Copy Logs Action
+  - Tool logs now include [LEVEL] prefixes propagated into the UI.
+  - Console retains formatted entries and provides a Copy Logs button.
 
 Purpose: Deliver valuable UX, reliability, and customization improvements in safe, reversible steps. Each task below is independently developable and testable in a single session.
 
@@ -78,7 +84,7 @@ P0‑03: Encoding Detection & Robust Skips — Completed
   - Final summary reports counts of processed/skipped.
 - Estimate: S
 
-P0‑04: Long Paths & Permission Resilience (Windows‑friendly)
+P0‑04: Long Paths & Permission Resilience (Windows‑friendly) — Completed
 - Summary: Handle long/odd paths and permission errors gracefully.
 - Files: file_loader_tool.py, project_structure_tool.py
 - Acceptance
@@ -94,7 +100,7 @@ P0‑05: Default Exclude Rules + UI Visibility — Completed
   - UI section displays active excludes.
 - Estimate: S
 
-P0‑06: Structured Logging & Copy Logs Action
+P0‑06: Structured Logging & Copy Logs Action — Completed
 - Summary: Log levels (Info/Warning/Error) and Copy‑to‑Clipboard from UI.
 - Files: tool_runner_ui.py, file_loader_tool.py
 - Acceptance
