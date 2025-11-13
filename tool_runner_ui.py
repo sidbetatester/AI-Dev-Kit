@@ -363,13 +363,6 @@ class ToolRunnerUI(tk.Tk):
         self.log_file_output.insert(0, "file_loader_log.txt")
 
         # Progress Bar:
-        # ttk.Label(self.main_frame, text="Progress:").grid(row=8, column=0, sticky=tk.W)
-        # self.log_file_output = ttk.Entry(self.main_frame, width=50)
-        # self.log_file_output.grid(row=8, column=1, sticky=tk.EW)
-        # self.log_file_output.insert(0, "file_loader_log.txt")
-
-###
-        # Progress Bar:
         ttk.Label(self.main_frame, text="Progress:").grid(row=8, column=0, sticky=tk.W)
 
         # Progress + status stack in the center column
@@ -402,7 +395,7 @@ class ToolRunnerUI(tk.Tk):
         )
         # Use grid here too (or switch both to pack), but don’t mix with grid inside the same frame
         self.cancel_btn.grid(row=0, column=0, sticky=tk.E)
-###
+
 
 
         # 4) PanedWindow => top=tree_panel, bottom=console_panel

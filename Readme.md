@@ -52,6 +52,8 @@ This tool is perfect for organizing large codebases, generating documentation, a
 
 ## Installation
 
+### Standard (pip/venv workflow)
+
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/sidbetatester/AI-Dev-Kit.git
@@ -79,6 +81,26 @@ This tool is perfect for organizing large codebases, generating documentation, a
    ```bash
    python tool_runner_ui.py
    ```
+
+### Using `uv` (optional, side-by-side with pip)
+
+If you prefer Astral's [`uv`](https://github.com/astral-sh/uv) workflow, the repo now includes a `pyproject.toml` so you can manage dependencies without touching the existing `requirements.txt` flow.
+
+1. **Install uv** (once):
+   ```bash
+   pip install uv
+   # or follow the official install instructions for your platform
+   ```
+2. **Sync dependencies** (creates an isolated environment managed by uv):
+   ```bash
+   uv sync
+   ```
+3. **Run the UI through uv**:
+   ```bash
+   uv run python tool_runner_ui.py
+   ```
+
+Both approaches are supported; choose whichever matches your tooling preference.
 
 ---
 
@@ -181,6 +203,14 @@ Monitor real-time updates:
 ---
 
 ## Technical Details
+
+## File Processing
+
+A short overview of how files are scanned and processed: the tool walks the project tree, detects text vs binary files, extracts metadata, and aggregates results into output files and JSON snapshots.
+
+## Tree Visualization
+
+This section describes the tree visualization output: a multi-column, interactive view that displays directory structure along with file metadata (size, created, modified) and supports filtering and snapshots.
 
 ### Workflow Diagrams
 
