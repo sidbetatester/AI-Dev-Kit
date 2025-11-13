@@ -59,11 +59,12 @@ class ProjectStructureTool:
         self._logger: Callable[[str], None] = logger if logger is not None else print
         self.exclude_dirs: set[str] = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
 
-    def _log(self, message: str) -> None:
+    def _log(self, message: str, level: str = "INFO") -> None:
+        formatted = f"[{level.upper()}] {message}"
         try:
-            self._logger(message)
+            self._logger(formatted)
         except Exception:
-            print(message)
+            print(formatted)
 
     def _count_items(self, root_path: str) -> int:
         """
@@ -218,12 +219,12 @@ class ProjectStructureTool:
                             if entry.is_file(follow_symlinks=False):
                                 structure["files"].append(self._get_file_info(entry))
                     except PermissionError:
-                        self._log(f"Warning: Permission denied accessing {entry.path}")
+                        self._log(f"Permission denied accessing {entry.path}", level="WARNING")
                     except OSError as e:
-                        self._log(f"Error accessing {entry.path}: {str(e)}")
+                        self._log(f"Error accessing {entry.path}: {str(e)}", level="ERROR")
                         
         except PermissionError:
-            self._log(f"Warning: Permission denied accessing directory {current_path}")
+            self._log(f"Permission denied accessing directory {current_path}", level="WARNING")
         except OSError as e:
             # Detect long-path issues for clearer logging
             msg = str(e)
@@ -233,7 +234,7 @@ class ProjectStructureTool:
                     msg = "Path too long"
             except Exception:
                 pass
-            self._log(f"Error accessing directory {current_path}: {msg}")
+            self._log(f"Error accessing directory {current_path}: {msg}", level="ERROR")
 
         return structure
 
@@ -280,7 +281,7 @@ class ProjectStructureTool:
             
             with open(output_file, 'w', encoding='utf-8') as json_file:
                 json.dump(self.project_map, json_file, indent=4)
-            self._log(f"Project structure saved to {output_file}")
+            self._log(f"Project structure saved to {output_file}", level="INFO")
             
         except IOError as e:
             raise IOError(f"Failed to save project structure: {str(e)}")
@@ -305,7 +306,7 @@ class ProjectStructureTool:
             
             with open(input_file, 'r', encoding='utf-8') as json_file:
                 self.project_map = json.load(json_file)
-            self._log(f"Project structure loaded from {input_file}")
+            self._log(f"Project structure loaded from {input_file}", level="INFO")
             return self.project_map
             
         except FileNotFoundError:
