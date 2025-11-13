@@ -227,13 +227,14 @@ class ToolRunnerUI(tk.Tk):
 
         # Configure TTK styles for various colored buttons
         style = ttk.Style(self)
+        # self._apply_consistent_theme(style)
         style.configure("Run.TButton",        background="lightgreen",  foreground="black")
         style.configure("Clear.TButton",      background="lightcoral",  foreground="black")
         style.configure("HideTree.TButton",   background="white",       foreground="black")
         style.configure("HideConsole.TButton",background="black",       foreground="green")
         style.configure("About.TButton",      background="white",       foreground="blue")
         style.configure("TreeTool.TButton",   background="lightblue",   foreground="black")
-
+        style.configure("Status.TButton",   background="grey",   foreground="green")
         # Main frame
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -275,6 +276,8 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(chk_loader, "Concatenate all project files into a single text file.")
         create_tooltip(chk_struct, "Generate & display a JSON project structure in an ASCII tree.")
 
+        # Default exclude rules
+        ttk.Label(self.main_frame, text="Excludes:").grid(row=3, column=0, sticky=tk.W)
         # Default exclude rules visibility/toggle
         self.use_default_excludes = tk.BooleanVar(value=True)
         excludes_frame = ttk.Frame(self.main_frame)
@@ -291,7 +294,7 @@ class ToolRunnerUI(tk.Tk):
 
         # Right side: run/clear/hide/about
         action_buttons_frame = ttk.Frame(self.main_frame)
-        action_buttons_frame.grid(row=2, column=2, rowspan=4, sticky=tk.NE)
+        action_buttons_frame.grid(row=2, column=2, rowspan=6, sticky=tk.NE)
 
         self.btn_run = ttk.Button(
             action_buttons_frame,
@@ -312,17 +315,6 @@ class ToolRunnerUI(tk.Tk):
         )
         btn_clear.pack(anchor="e", pady=(0,5))
         create_tooltip(btn_clear, "Clears the console output area.")
-
-        # Progress bar + status + Cancel
-        self.progress = ttk.Progressbar(action_buttons_frame, orient=tk.HORIZONTAL, length=160,
-                                        mode='determinate', variable=self.progress_var, maximum=100)
-        self.progress.pack(anchor="e", pady=(0,5))
-        self.status_label = ttk.Label(action_buttons_frame, text="Ready", width=30)
-        self.status_label.pack(anchor="e", pady=(0,5))
-        self.cancel_btn = ttk.Button(action_buttons_frame, text="Cancel", command=self.cancel_run,
-                                     width=13, state=tk.DISABLED)
-        self.cancel_btn.pack(anchor="e", pady=(0,5))
-        create_tooltip(self.cancel_btn, "Cancel the current run.")
 
         btn_hide_tree = ttk.Button(
             action_buttons_frame,
@@ -355,24 +347,67 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(btn_about, "Information about this tool, author, and license.")
 
         # 3) File/Structure/Log outputs
-        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=4, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=5, column=0, sticky=tk.W)
         self.file_loader_output = ttk.Entry(self.main_frame, width=50)
-        self.file_loader_output.grid(row=4, column=1, sticky=tk.EW)
+        self.file_loader_output.grid(row=5, column=1, sticky=tk.EW)
         self.file_loader_output.insert(0, "loaded_files_output.txt")
 
-        ttk.Label(self.main_frame, text="Structure Output:").grid(row=5, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Structure Output:").grid(row=6, column=0, sticky=tk.W)
         self.structure_output = ttk.Entry(self.main_frame, width=50)
-        self.structure_output.grid(row=5, column=1, sticky=tk.EW)
+        self.structure_output.grid(row=6, column=1, sticky=tk.EW)
         self.structure_output.insert(0, "project_structure.json")
 
-        ttk.Label(self.main_frame, text="Log File:").grid(row=6, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Log File:").grid(row=7, column=0, sticky=tk.W)
         self.log_file_output = ttk.Entry(self.main_frame, width=50)
-        self.log_file_output.grid(row=6, column=1, sticky=tk.EW)
+        self.log_file_output.grid(row=7, column=1, sticky=tk.EW)
         self.log_file_output.insert(0, "file_loader_log.txt")
+
+        # Progress Bar:
+        # ttk.Label(self.main_frame, text="Progress:").grid(row=8, column=0, sticky=tk.W)
+        # self.log_file_output = ttk.Entry(self.main_frame, width=50)
+        # self.log_file_output.grid(row=8, column=1, sticky=tk.EW)
+        # self.log_file_output.insert(0, "file_loader_log.txt")
+
+###
+        # Progress Bar:
+        ttk.Label(self.main_frame, text="Progress:").grid(row=8, column=0, sticky=tk.W)
+
+        # Progress + status stack in the center column
+        progress_col = ttk.Frame(self.main_frame)
+        progress_col.grid(row=8, column=1, sticky=tk.EW)
+        progress_col.columnconfigure(0, weight=1)
+
+        self.progress = ttk.Progressbar(
+            progress_col,
+            orient=tk.HORIZONTAL,
+            mode='determinate',
+            variable=self.progress_var,
+            maximum=100
+        )
+        self.progress.grid(row=0, column=0, sticky=tk.EW)
+        # label within progress bar:
+        self.status_label = ttk.Label(progress_col, text="Ready")
+        self.status_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Right-side column: Cancel only (use one geometry manager inside this frame)
+        progress_side = ttk.Frame(self.main_frame)
+        progress_side.grid(row=8, column=2, sticky=tk.E)
+
+        self.cancel_btn = ttk.Button(
+            progress_side,
+            text="Cancel",
+            command=self.cancel_run,
+            width=13,
+            state=tk.DISABLED
+        )
+        # Use grid here too (or switch both to pack), but don’t mix with grid inside the same frame
+        self.cancel_btn.grid(row=0, column=0, sticky=tk.E)
+###
+
 
         # 4) PanedWindow => top=tree_panel, bottom=console_panel
         self.paned = ttk.Panedwindow(self.main_frame, orient=tk.VERTICAL)
-        self.paned.grid(row=8, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
+        self.paned.grid(row=10, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
 
         self.tree_panel = ttk.Frame(self.paned)
         self.paned.add(self.tree_panel, weight=3)
@@ -381,7 +416,7 @@ class ToolRunnerUI(tk.Tk):
         self.paned.add(self.console_panel, weight=1)
 
         self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(8, weight=1)
+        self.main_frame.rowconfigure(10, weight=1)
 
         # 5) Top Pane: Tree label
         self.tree_label = ttk.Label(self.tree_panel, text="Project Tree", font=("Arial", 12, "bold"))
@@ -568,6 +603,7 @@ class ToolRunnerUI(tk.Tk):
         Restore original stdout upon destruction.
         """
         sys.stdout = self.original_stdout
+
 
     ################################################
     # Show/Hide Columns
