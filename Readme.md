@@ -125,6 +125,7 @@ Both approaches are supported; choose whichever matches your tooling preference.
 The main window offers:
 - **Directory Selection**: Choose the project root and output directory.
 - **Tool Selection**: Select File Loader, Project Structure, or both.
+- **Excludes Configuration**: Toggle default excludes and edit the comma-separated list of directory names (e.g., `.git`, `venv`, `node_modules`) that are skipped during scans.
 - **Output Configuration**: Set file names for concatenated output, structure JSON, and logs.
 - **Run Controls**: Start, clear logs, or toggle the console/tree view.
 
@@ -156,6 +157,8 @@ Key controls include:
 - **Search and Filter**: Find specific files or extensions in real time.
 - **Snapshot Management**: Save or load the current tree view.
 - **Toggle Columns**: Show or hide metadata like size, created, and modified.
+- **Show Excluded Dirs**: Control whether directories in the active excludes list are shown in the tree or hidden from view.
+- **Persistent Settings**: The excludes checkbox and list are saved between sessions, so your preferred skip rules are restored on restart.
 
 ---
 
