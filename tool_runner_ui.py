@@ -282,15 +282,18 @@ class ToolRunnerUI(tk.Tk):
         self.use_default_excludes = tk.BooleanVar(value=True)
         excludes_frame = ttk.Frame(self.main_frame)
         excludes_frame.grid(row=3, column=1, sticky=tk.W)
+        excludes_frame.columnconfigure(0, weight=1)
+
         chk_default_ex = ttk.Checkbutton(
             excludes_frame,
             text="Apply default excludes",
             variable=self.use_default_excludes,
             command=self._on_toggle_default_excludes,
         )
-        chk_default_ex.pack(side=tk.LEFT, padx=(0, 10))
+        chk_default_ex.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+
         self.excludes_label = ttk.Label(excludes_frame, text=self._get_excludes_text())
-        self.excludes_label.pack(side=tk.LEFT)
+        self.excludes_label.grid(row=1, column=0, sticky=tk.W, pady=(2, 0))
 
         # Right side: run/clear/hide/about
         action_buttons_frame = ttk.Frame(self.main_frame)
