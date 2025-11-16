@@ -281,8 +281,8 @@ class ToolRunnerUI(tk.Tk):
         # Default exclude rules visibility/toggle
         self.use_default_excludes = tk.BooleanVar(value=True)
         excludes_frame = ttk.Frame(self.main_frame)
-        excludes_frame.grid(row=3, column=1, sticky=tk.W)
-        excludes_frame.columnconfigure(0, weight=1)
+        excludes_frame.grid(row=3, column=1, sticky=tk.EW)
+        excludes_frame.columnconfigure(1, weight=1)
 
         chk_default_ex = ttk.Checkbutton(
             excludes_frame,
@@ -290,10 +290,15 @@ class ToolRunnerUI(tk.Tk):
             variable=self.use_default_excludes,
             command=self._on_toggle_default_excludes,
         )
-        chk_default_ex.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        # Place the checkbox on the first row
+        chk_default_ex.grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=(0, 10))
 
-        self.excludes_label = ttk.Label(excludes_frame, text=self._get_excludes_text())
-        self.excludes_label.grid(row=1, column=0, sticky=tk.W, pady=(2, 0))
+        # Second row: label + editable text box for the exclude list
+        ttk.Label(excludes_frame, text="Excluding:").grid(row=1, column=0, sticky=tk.W, pady=(2, 0))
+        self.excludes_entry = ttk.Entry(excludes_frame, width=60)
+        self.excludes_entry.grid(row=1, column=1, sticky=tk.EW, pady=(2, 0))
+        # Seed the entry with the default excludes list
+        self.excludes_entry.insert(0, ", ".join(sorted(DEFAULT_EXCLUDE_DIRS)))
 
         # Right side: run/clear/hide/about
         action_buttons_frame = ttk.Frame(self.main_frame)
@@ -619,24 +624,26 @@ class ToolRunnerUI(tk.Tk):
         self.tree["displaycolumns"] = cols
 
     def _get_excludes_text(self) -> str:
-        if getattr(self, 'use_default_excludes', None) and self.use_default_excludes.get():
-            return "Excluding: " + ", ".join(sorted(DEFAULT_EXCLUDE_DIRS))
-        return "Excluding: None"
+        """
+        Return the default excludes list as a comma-separated string.
+        Used to seed the editable excludes entry on startup.
+        """
+        return ", ".join(sorted(DEFAULT_EXCLUDE_DIRS))
 
     def _on_toggle_default_excludes(self) -> None:
-        # Guard against early init/teardown where label may not exist yet
-        if hasattr(self, 'excludes_label') and self.excludes_label is not None:
-            try:
-                # Only update if widget still exists in the UI
-                if self.excludes_label.winfo_exists():
-                    self.excludes_label.configure(text=self._get_excludes_text())
-            except Exception as e:
-                # Log instead of silently swallowing unexpected errors
-                self._append_log_line("WARNING", f"Failed to update excludes label: {e}")
-        else:
-            # During initialization before label creation, it is safe to ignore
-            # because the label text will be set when the widget is created.
+        """
+        Enable or disable the excludes entry based on the checkbox state.
+        When unchecked, the entry is disabled (and ignored when running tools).
+        """
+        if not hasattr(self, 'excludes_entry') or self.excludes_entry is None:
             return
+        try:
+            if self.use_default_excludes.get():
+                self.excludes_entry.configure(state="normal")
+            else:
+                self.excludes_entry.configure(state="disabled")
+        except Exception as e:
+            self._append_log_line("WARNING", f"Failed to update excludes entry state: {e}")
 
     ################################################
     # Two-click "Collapse All" logic
@@ -774,7 +781,16 @@ class ToolRunnerUI(tk.Tk):
         # Capture selections
         sel_file_loader = self.tool_vars['file_loader'].get()
         sel_project_structure = self.tool_vars['project_structure'].get()
-        excludes = set(DEFAULT_EXCLUDE_DIRS) if self.use_default_excludes.get() else set()
+
+        # Build the excludes set from the editable entry when enabled.
+        if self.use_default_excludes.get():
+            raw_excludes = ""
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                raw_excludes = self.excludes_entry.get()
+            excludes = {item.strip() for item in raw_excludes.split(",") if item.strip()}
+        else:
+            excludes = set()
+
         file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
         log_output = os.path.join(output_dir, self.log_file_output.get())
         structure_output = os.path.join(output_dir, self.structure_output.get())
