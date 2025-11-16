@@ -32,6 +32,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from file_loader_tool import FileLoaderTool, DEFAULT_EXCLUDE_DIRS
 from project_structure_tool import ProjectStructureTool
 
+# Simple settings file used to persist UI options
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tool_runner_settings.json")
+
 
 ################################################
 # Tooltip System
@@ -224,6 +227,9 @@ class ToolRunnerUI(tk.Tk):
 
         # Additional state to handle the two-click "Collapse All" logic
         self.collapse_mode = 0  # 0 => next time do full collapse, 1 => next time do partial
+
+        # Active excludes set used both for tooling and tree filtering
+        self.active_excludes: set[str] = set(DEFAULT_EXCLUDE_DIRS)
 
         # Configure TTK styles for various colored buttons
         style = ttk.Style(self)
@@ -599,6 +605,9 @@ class ToolRunnerUI(tk.Tk):
         sys.stdout = TextRedirector(self.console, "stdout")
         self.log_entries: List[str] = []
 
+        # Load persisted UI settings (if any) now that widgets exist
+        self._load_settings()
+
     def __del__(self) -> None:
         """
         Restore original stdout upon destruction.
@@ -630,6 +639,43 @@ class ToolRunnerUI(tk.Tk):
         """
         return ", ".join(sorted(DEFAULT_EXCLUDE_DIRS))
 
+    def _load_settings(self) -> None:
+        """
+        Load persisted UI settings (currently the excludes checkbox/text)
+        from SETTINGS_FILE, if it exists. Best-effort; errors are logged
+        but do not prevent the app from starting.
+        """
+        try:
+            if not os.path.isfile(SETTINGS_FILE):
+                # Ensure the entry state matches the default checkbox value
+                self._on_toggle_default_excludes()
+                return
+
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Restore checkbox
+            self.use_default_excludes.set(data.get("use_default_excludes", True))
+
+            # Restore entry text (fall back to defaults if missing)
+            excludes_text = data.get("excludes_text", self._get_excludes_text())
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                self.excludes_entry.delete(0, tk.END)
+                self.excludes_entry.insert(0, excludes_text)
+
+            # Apply enabled/disabled state based on checkbox
+            self._on_toggle_default_excludes()
+        except Exception as e:
+            # Attempt to log, but never crash initialization
+            try:
+                self._append_log_line("WARNING", f"Failed to load settings: {e}")
+            except Exception:
+                pass
+            try:
+                self._on_toggle_default_excludes()
+            except Exception:
+                pass
+
     def _on_toggle_default_excludes(self) -> None:
         """
         Enable or disable the excludes entry based on the checkbox state.
@@ -644,6 +690,26 @@ class ToolRunnerUI(tk.Tk):
                 self.excludes_entry.configure(state="disabled")
         except Exception as e:
             self._append_log_line("WARNING", f"Failed to update excludes entry state: {e}")
+
+    def _save_settings(self) -> None:
+        """
+        Persist key UI settings to SETTINGS_FILE so that they survive restarts.
+        Currently persists the excludes checkbox state and text entry.
+        """
+        try:
+            excludes_text = self._get_excludes_text()
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                excludes_text = self.excludes_entry.get()
+
+            data = {
+                "use_default_excludes": bool(self.use_default_excludes.get()),
+                "excludes_text": excludes_text,
+            }
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            # Log but do not raise; closing the app should still succeed
+            self._append_log_line("WARNING", f"Failed to save settings: {e}")
 
     ################################################
     # Two-click "Collapse All" logic
@@ -791,6 +857,9 @@ class ToolRunnerUI(tk.Tk):
         else:
             excludes = set()
 
+        # Keep a copy for tree filtering (Show Excluded Dirs)
+        self.active_excludes = set(excludes)
+
         file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
         log_output = os.path.join(output_dir, self.log_file_output.get())
         structure_output = os.path.join(output_dir, self.structure_output.get())
@@ -919,6 +988,9 @@ class ToolRunnerUI(tk.Tk):
         termination and partial outputs.
         """
         try:
+            # Persist current UI settings before exit (best-effort)
+            self._save_settings()
+
             # If no worker or not running, safe to close immediately
             if not self.running or self.worker_thread is None or not self.worker_thread.is_alive():
                 self.destroy()
@@ -1187,7 +1259,8 @@ class ToolRunnerUI(tk.Tk):
         """
         if self.show_excluded.get():
             return True
-        excluded_dirs = {'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git'}
+        # Use the same excludes set that was passed to the tools
+        excluded_dirs = getattr(self, "active_excludes", set(DEFAULT_EXCLUDE_DIRS))
         return dirname not in excluded_dirs
 
     ################################################
