@@ -75,7 +75,7 @@ class ProjectStructureTool:
         try:
             for _root, dirs, files in os.walk(root_path):
                 total += len(dirs) + len(files)
-        except Exception:
+        except OSError:
             return 0
         return total
 
@@ -196,6 +196,10 @@ class ProjectStructureTool:
                 # Convert to list to avoid iterator invalidation issues on Windows
                 entries_list = sorted(list(entries), key=lambda e: e.name.casefold())
                 for entry in entries_list:
+                    # Check cancellation before processing each entry
+                    if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
+                        return structure
+
                     try:
                         # Update progress for each encountered entry (file or directory)
                         if counters is not None:
@@ -284,7 +288,7 @@ class ProjectStructureTool:
             self._log(f"Project structure saved to {output_file}", level="INFO")
             
         except IOError as e:
-            raise IOError(f"Failed to save project structure: {str(e)}")
+            raise IOError(f"Failed to save project structure: {e}") from e
 
     def load_project_structure(self, input_file: str = 'project_structure.json') -> Dict[str, DirectoryStructure]:
         """
@@ -309,10 +313,10 @@ class ProjectStructureTool:
             self._log(f"Project structure loaded from {input_file}", level="INFO")
             return self.project_map
             
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Structure file not found: {input_file}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Structure file not found: {input_file}") from e
         except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(f"Invalid JSON in structure file: {str(e)}", e.doc, e.pos)
+            raise json.JSONDecodeError(f"Invalid JSON in structure file: {e}", e.doc, e.pos) from e
 
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@ class FileLoaderTool:
         try:
             with open(self._safe_fs_path(file_path), 'rb') as fh:
                 data = fh.read(sample_size)
-        except Exception:
+        except OSError:
             # If we can't read as bytes, treat as non-text to be safe.
             return False
         if not data:
@@ -98,14 +98,14 @@ class FileLoaderTool:
             try:
                 with open(self._safe_fs_path(file_path), 'r', encoding=enc, errors='strict') as fh:
                     return (fh.read(), enc, None)
-            except Exception as e:
+            except (UnicodeError, OSError) as e:
                 last_err = e
                 continue
         # Last resort: decode with replacement to avoid crashing the run
         try:
             with open(self._safe_fs_path(file_path), 'r', encoding='utf-8', errors='replace') as fh:
                 return (fh.read(), 'fallback-replace:utf-8', None)
-        except Exception as e:
+        except (UnicodeError, OSError) as e:
             return (None, None, last_err or e)
 
     def _safe_fs_path(self, p: Path) -> str:
@@ -180,10 +180,6 @@ class FileLoaderTool:
             if any(ex_dir in root_path.parts for ex_dir in self.exclude_dirs):
                 continue
 
-            # Progress per directory (optional)
-            if progress_callback is not None:
-                progress_callback('file_loader', processed_count, total_estimate, str(root_path))
-
             # Deterministic file order within a directory
             for file in sorted(files, key=lambda s: s.casefold()):
                 file_path = root_path / file
@@ -195,6 +191,9 @@ class FileLoaderTool:
                         msg = f"Skipped (binary) {file_path}"
                         self.skipped_files.append(msg)
                         self._log(msg, level="WARNING")
+                        processed_count += 1
+                        if progress_callback is not None:
+                            progress_callback('file_loader', processed_count, total_estimate, str(root_path))
                         continue
                     # Attempt to read using encoding fallback strategy
                     content, used, err = self._read_text_with_fallback(file_path)
@@ -204,6 +203,8 @@ class FileLoaderTool:
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
                     processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback('file_loader', processed_count, total_estimate, str(root_path))
                     if used and used.startswith('fallback-replace'):
                         self._log(f"Decoded with replacement: {file_path} ({used})", level="WARNING")
                 except (UnicodeDecodeError, FileNotFoundError, PermissionError, OSError) as e:
@@ -215,6 +216,9 @@ class FileLoaderTool:
                     self.skipped_files.append(error_msg)
                     level = "ERROR" if isinstance(e, OSError) and not path_too_long else "WARNING"
                     self._log(error_msg, level=level)
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback('file_loader', processed_count, total_estimate, str(root_path))
         
         return file_contents
 
