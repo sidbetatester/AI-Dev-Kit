@@ -60,7 +60,7 @@ This tool is perfect for organizing large codebases, generating documentation, a
    cd AI-Dev-Kit
    ```
 
-2. **Ensure Python 3.7+** is installed:
+2. **Ensure Python 3.9+** is installed:
    ```bash
    python --version
    ```
