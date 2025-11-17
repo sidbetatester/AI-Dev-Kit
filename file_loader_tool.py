@@ -7,8 +7,15 @@ skipped, and excluded content. Compatible with Windows, Linux, and macOS.
 """
 
 import os
-from typing import Dict, List, Set
+import tempfile
+from typing import Dict, List, Set, Optional, Callable, Any, Tuple
 from pathlib import Path  # For cross-platform path handling
+
+# Default directory names to exclude from traversal
+DEFAULT_EXCLUDE_DIRS: Set[str] = {
+    'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+}
 
 
 class FileLoaderTool:
@@ -26,7 +33,8 @@ class FileLoaderTool:
         excluded_dirs: List of directories that were excluded from processing.
     """
 
-    def __init__(self, project_root: str) -> None:
+    def __init__(self, project_root: str, logger: Optional[Callable[[str], None]] = None,
+                 exclude_dirs: Optional[Set[str]] = None) -> None:
         """
         Initialize the FileLoaderTool with a project root directory.
 
@@ -37,8 +45,104 @@ class FileLoaderTool:
         self.processed_files: List[str] = []
         self.skipped_files: List[str] = []
         self.excluded_dirs: List[str] = []
+        self._logger: Callable[[str], None] = logger if logger is not None else print
+        self.exclude_dirs: Set[str] = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
 
-    def load_files_in_directory(self, directory: str) -> Dict[str, str]:
+    def _log(self, message: str, level: str = "INFO") -> None:
+        """
+        Emit a structured log message with a level prefix to whatever logger was provided.
+        Default logger is print(), so we encode the level into the string.
+        """
+        formatted = f"[{level.upper()}] {message}"
+        try:
+            self._logger(formatted)
+        except Exception:
+            # Fallback to print if provided logger fails
+            print(formatted)
+
+    def _is_probably_text(self, file_path: Path, sample_size: int = 2048) -> bool:
+        """
+        Heuristic to detect text vs binary by sampling bytes.
+        - Returns False if NUL byte present.
+        - Otherwise checks ratio of printable/whitespace bytes.
+        """
+        try:
+            with open(self._safe_fs_path(file_path), 'rb') as fh:
+                data = fh.read(sample_size)
+        except OSError:
+            # If we can't read as bytes, treat as non-text to be safe.
+            return False
+        if not data:
+            return True
+        if b"\x00" in data:
+            return False
+        # Count control bytes excluding common whitespace
+        controls = 0
+        for b in data:
+            if b < 32 and b not in (9, 10, 12, 13):  # exclude \t, \n, \f, \r
+                controls += 1
+            elif b == 127:  # DEL
+                controls += 1
+        return (controls / max(1, len(data))) <= 0.30
+
+    def _read_text_with_fallback(self, file_path: Path) -> Tuple[Optional[str], Optional[str], Optional[Exception]]:
+        """
+        Attempt to read text using a sequence of encodings.
+        Returns (text, encoding_used). If it must fall back to replacement,
+        returns ('decoded text', 'fallback-replace:<encoding>'). If it fails,
+        returns (None, None).
+        """
+        encodings = ['utf-8', 'utf-8-sig', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252', 'latin-1']
+        last_err: Optional[Exception] = None
+        for enc in encodings:
+            try:
+                with open(self._safe_fs_path(file_path), 'r', encoding=enc, errors='strict') as fh:
+                    return (fh.read(), enc, None)
+            except (UnicodeError, OSError) as e:
+                last_err = e
+                continue
+        # Last resort: decode with replacement to avoid crashing the run
+        try:
+            with open(self._safe_fs_path(file_path), 'r', encoding='utf-8', errors='replace') as fh:
+                return (fh.read(), 'fallback-replace:utf-8', None)
+        except (UnicodeError, OSError) as e:
+            return (None, None, last_err or e)
+
+    def _safe_fs_path(self, p: Path) -> str:
+        r"""
+        Return a filesystem-safe string path.
+        On Windows, prefix with \\?\ for long absolute paths or convert UNC
+        to \\?\UNC\server\share form.
+        """
+        s = str(p)
+        if os.name != 'nt':
+            return s
+        abs_s = str(p.resolve())
+        if abs_s.startswith('\\\\?\\'):
+            return abs_s
+        if abs_s.startswith('\\\\'):
+            return "\\\\?\\UNC\\" + abs_s.lstrip('\\')
+        return "\\\\?\\" + abs_s
+
+    def _is_path_too_long_error(self, e: Exception) -> bool:
+        try:
+            import errno
+            if isinstance(e, OSError):
+                if getattr(e, 'errno', None) == errno.ENAMETOOLONG:
+                    return True
+                winerr = getattr(e, 'winerror', None)
+                if winerr in (206,):  # ERROR_FILENAME_EXCED_RANGE
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def load_files_in_directory(
+        self,
+        directory: str,
+        progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+        cancel_event: Optional[Any] = None,
+    ) -> Dict[str, str]:
         """
         Recursively load text files from the given directory and its subdirectories.
 
@@ -53,39 +157,69 @@ class FileLoaderTool:
             A dictionary mapping file paths to their text contents.
         """
         file_contents: Dict[str, str] = {}
-        exclude_dirs: Set[str] = {
-            'venv', '__pycache__', '.venv',
-            'env', 'node_modules', '.git'
-        }
         
         directory_path = Path(directory).resolve()
         
+        processed_count = 0
+        total_estimate = 0  # 0/negative implies unknown
+
         for root, dirs, files in os.walk(directory_path):
             root_path = Path(root)
             
             # Track and remove excluded directories
-            removed_dirs = set(d for d in dirs if d in exclude_dirs)
+            removed_dirs = set(d for d in dirs if d in self.exclude_dirs)
             if removed_dirs:
                 self.excluded_dirs.extend(str(root_path / d) for d in removed_dirs)
             
             # Update dirs in place to exclude unwanted directories
-            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
+            # Deterministic traversal order: sort directories (case-insensitive)
+            dirs.sort(key=lambda s: s.casefold())
             
             # Skip processing if the current directory is in an excluded path
-            if any(ex_dir in root_path.parts for ex_dir in exclude_dirs):
+            if any(ex_dir in root_path.parts for ex_dir in self.exclude_dirs):
                 continue
 
-            for file in files:
+            # Deterministic file order within a directory
+            for file in sorted(files, key=lambda s: s.casefold()):
                 file_path = root_path / file
+                if cancel_event is not None and getattr(cancel_event, 'is_set', lambda: False)():
+                    return file_contents
                 try:
-                    # Attempt to read as UTF-8 text
-                    content = file_path.read_text(encoding='utf-8')
+                    # Skip likely binary files early
+                    if not self._is_probably_text(file_path):
+                        msg = f"Skipped (binary) {file_path}"
+                        self.skipped_files.append(msg)
+                        self._log(msg, level="WARNING")
+                        processed_count += 1
+                        if progress_callback is not None:
+                            progress_callback('file_loader', processed_count, total_estimate, str(root_path))
+                        continue
+                    # Attempt to read using encoding fallback strategy
+                    content, used, err = self._read_text_with_fallback(file_path)
+                    if content is None:
+                        # Treat as an I/O-style failure so it's handled
+                        # by the outer OSError block and logged/skipped.
+                        raise OSError(f"Failed to decode text file: {file_path}") from err
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
-                except (UnicodeDecodeError, FileNotFoundError, PermissionError) as e:
-                    error_msg = f"Skipped {file_path} due to error: {e}"
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback('file_loader', processed_count, total_estimate, str(root_path))
+                    if used and used.startswith('fallback-replace'):
+                        self._log(f"Decoded with replacement: {file_path} ({used})", level="WARNING")
+                except (UnicodeDecodeError, FileNotFoundError, PermissionError, OSError) as e:
+                    path_too_long = isinstance(e, OSError) and self._is_path_too_long_error(e)
+                    if path_too_long:
+                        error_msg = f"Skipped (path too long) {file_path}"
+                    else:
+                        error_msg = f"Skipped {file_path} due to error: {e}"
                     self.skipped_files.append(error_msg)
-                    print(error_msg)
+                    level = "ERROR" if isinstance(e, OSError) and not path_too_long else "WARNING"
+                    self._log(error_msg, level=level)
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback('file_loader', processed_count, total_estimate, str(root_path))
         
         return file_contents
 
@@ -107,12 +241,17 @@ class FileLoaderTool:
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with output_path.open('w', encoding='utf-8') as f:
-            for file_path, content in file_contents.items():
-                f.write(f"--- File: {file_path} ---\n")
-                f.write(content + "\n\n")
-        
-        print(f"File contents saved to {output_path}")
+        # Deterministic order by path
+        sorted_paths = sorted(file_contents.keys(), key=lambda s: s.casefold())
+
+        def _write(fh):
+            for file_path in sorted_paths:
+                content = file_contents[file_path]
+                fh.write(f"--- File: {file_path} ---\n")
+                fh.write(content + "\n\n")
+
+        self._atomic_write_text(output_path, _write)
+        self._log(f"File contents saved to {output_path}", level="INFO")
 
     def save_log(
         self, 
@@ -129,24 +268,59 @@ class FileLoaderTool:
         """
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with log_path.open('w', encoding='utf-8') as f:
-            f.write("Processed Files:\n")
-            for file in self.processed_files:
-                f.write(f"{file}\n")
-            
-            f.write("\nExcluded Directories:\n")
-            for dir_path in self.excluded_dirs:
-                f.write(f"{dir_path}\n")
-            
-            f.write("\nSkipped Files:\n")
-            if self.skipped_files:
-                for error in self.skipped_files:
-                    f.write(f"{error}\n")
+
+        # Sort lists for deterministic logs
+        processed_sorted = sorted(self.processed_files, key=lambda s: s.casefold())
+        excluded_sorted = sorted(self.excluded_dirs, key=lambda s: s.casefold())
+        skipped_sorted = sorted(self.skipped_files, key=lambda s: s.casefold())
+        summary_line = f"Summary: processed={len(processed_sorted)} excluded_dirs={len(excluded_sorted)} skipped={len(skipped_sorted)}\n\n"
+
+        def _write(fh):
+            fh.write(summary_line)
+            fh.write("Processed Files:\n")
+            for file in processed_sorted:
+                fh.write(f"{file}\n")
+
+            fh.write("\nExcluded Directories:\n")
+            for dir_path in excluded_sorted:
+                fh.write(f"{dir_path}\n")
+
+            fh.write("\nSkipped Files:\n")
+            if skipped_sorted:
+                for error in skipped_sorted:
+                    fh.write(f"{error}\n")
             else:
-                f.write("No files were skipped during processing\n")
-        
-        print(f"Log saved to {log_path}")
+                fh.write("No files were skipped during processing\n")
+
+        self._atomic_write_text(log_path, _write)
+        self._log(f"Log saved to {log_path}", level="INFO")
+
+    def _atomic_write_text(self, final_path: Path, write_callback: Callable[[Any], None]) -> None:
+        """
+        Atomically write text to final_path by writing to a temp file and replacing.
+        Ensures best-effort atomicity across platforms using os.replace.
+        """
+        tmp_dir = final_path.parent
+        prefix = final_path.name + "."
+        fd, tmp_name = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=str(tmp_dir))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8', newline='') as fh:
+                write_callback(fh)
+                fh.flush()
+                try:
+                    os.fsync(fh.fileno())
+                except Exception:
+                    # fsync might not be available/necessary on some filesystems
+                    pass
+            os.replace(str(tmp_path), str(final_path))
+        except Exception:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
 
 if __name__ == "__main__":

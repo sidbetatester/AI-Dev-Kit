@@ -52,13 +52,15 @@ This tool is perfect for organizing large codebases, generating documentation, a
 
 ## Installation
 
+### Standard (pip/venv workflow)
+
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/sidbetatester/AI-Dev-Kit.git
    cd AI-Dev-Kit
    ```
 
-2. **Ensure Python 3.7+** is installed:
+2. **Ensure Python 3.9+** is installed:
    ```bash
    python --version
    ```
@@ -79,6 +81,26 @@ This tool is perfect for organizing large codebases, generating documentation, a
    ```bash
    python tool_runner_ui.py
    ```
+
+### Using `uv` (optional, side-by-side with pip)
+
+If you prefer Astral's [`uv`](https://github.com/astral-sh/uv) workflow, the repo now includes a `pyproject.toml` so you can manage dependencies without touching the existing `requirements.txt` flow.
+
+1. **Install uv** (once):
+   ```bash
+   pip install uv
+   # or follow the official install instructions for your platform
+   ```
+2. **Sync dependencies** (creates an isolated environment managed by uv):
+   ```bash
+   uv sync
+   ```
+3. **Run the UI through uv**:
+   ```bash
+   uv run python tool_runner_ui.py
+   ```
+
+Both approaches are supported; choose whichever matches your tooling preference.
 
 ---
 
@@ -103,6 +125,7 @@ This tool is perfect for organizing large codebases, generating documentation, a
 The main window offers:
 - **Directory Selection**: Choose the project root and output directory.
 - **Tool Selection**: Select File Loader, Project Structure, or both.
+- **Excludes Configuration**: Toggle default excludes and edit the comma-separated list of directory names (e.g., `.git`, `venv`, `node_modules`) that are skipped during scans.
 - **Output Configuration**: Set file names for concatenated output, structure JSON, and logs.
 - **Run Controls**: Start, clear logs, or toggle the console/tree view.
 
@@ -134,6 +157,8 @@ Key controls include:
 - **Search and Filter**: Find specific files or extensions in real time.
 - **Snapshot Management**: Save or load the current tree view.
 - **Toggle Columns**: Show or hide metadata like size, created, and modified.
+- **Show Excluded Dirs**: Control whether directories in the active excludes list are shown in the tree or hidden from view.
+- **Persistent Settings**: The excludes checkbox and list are saved between sessions, so your preferred skip rules are restored on restart.
 
 ---
 
@@ -181,6 +206,14 @@ Monitor real-time updates:
 ---
 
 ## Technical Details
+
+## File Processing
+
+A short overview of how files are scanned and processed: the tool walks the project tree, detects text vs binary files, extracts metadata, and aggregates results into output files and JSON snapshots.
+
+## Tree Visualization
+
+This section describes the tree visualization output: a multi-column, interactive view that displays directory structure along with file metadata (size, created, modified) and supports filtering and snapshots.
 
 ### Workflow Diagrams
 

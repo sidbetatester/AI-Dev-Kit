@@ -23,12 +23,17 @@ A comprehensive Tkinter-based GUI for:
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 import os
+import threading
+import queue
 import sys
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from file_loader_tool import FileLoaderTool
+from file_loader_tool import FileLoaderTool, DEFAULT_EXCLUDE_DIRS
 from project_structure_tool import ProjectStructureTool
+
+# Simple settings file used to persist UI options
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tool_runner_settings.json")
 
 
 ################################################
@@ -202,8 +207,17 @@ class ToolRunnerUI(tk.Tk):
         Initialize the ToolRunnerUI, creating all widgets, styles, and logic.
         """
         super().__init__()
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.title("Project Tools Runner")
         self.geometry("900x600")
+
+        # Threading/progress state
+        self.worker_thread: Optional[threading.Thread] = None
+        self.cancel_event: Optional[threading.Event] = None
+        self.status_q: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self.running: bool = False
+        self.progress_var = tk.IntVar(value=0)
+        self._indeterminate: bool = False
 
         # Track hidden states for toggling
         self.tree_hidden = False
@@ -214,15 +228,19 @@ class ToolRunnerUI(tk.Tk):
         # Additional state to handle the two-click "Collapse All" logic
         self.collapse_mode = 0  # 0 => next time do full collapse, 1 => next time do partial
 
+        # Active excludes set used both for tooling and tree filtering
+        self.active_excludes: set[str] = set(DEFAULT_EXCLUDE_DIRS)
+
         # Configure TTK styles for various colored buttons
         style = ttk.Style(self)
+        # self._apply_consistent_theme(style)
         style.configure("Run.TButton",        background="lightgreen",  foreground="black")
         style.configure("Clear.TButton",      background="lightcoral",  foreground="black")
         style.configure("HideTree.TButton",   background="white",       foreground="black")
         style.configure("HideConsole.TButton",background="black",       foreground="green")
         style.configure("About.TButton",      background="white",       foreground="blue")
         style.configure("TreeTool.TButton",   background="lightblue",   foreground="black")
-
+        style.configure("Status.TButton",   background="grey",   foreground="green")
         # Main frame
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -264,19 +282,43 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(chk_loader, "Concatenate all project files into a single text file.")
         create_tooltip(chk_struct, "Generate & display a JSON project structure in an ASCII tree.")
 
+        # Default exclude rules
+        ttk.Label(self.main_frame, text="Excludes:").grid(row=3, column=0, sticky=tk.W)
+        # Default exclude rules visibility/toggle
+        self.use_default_excludes = tk.BooleanVar(value=True)
+        excludes_frame = ttk.Frame(self.main_frame)
+        excludes_frame.grid(row=3, column=1, sticky=tk.EW)
+        excludes_frame.columnconfigure(1, weight=1)
+
+        chk_default_ex = ttk.Checkbutton(
+            excludes_frame,
+            text="Apply default excludes",
+            variable=self.use_default_excludes,
+            command=self._on_toggle_default_excludes,
+        )
+        # Place the checkbox on the first row
+        chk_default_ex.grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=(0, 10))
+
+        # Second row: label + editable text box for the exclude list
+        ttk.Label(excludes_frame, text="Excluding:").grid(row=1, column=0, sticky=tk.W, pady=(2, 0))
+        self.excludes_entry = ttk.Entry(excludes_frame, width=60)
+        self.excludes_entry.grid(row=1, column=1, sticky=tk.EW, pady=(2, 0))
+        # Seed the entry with the default excludes list
+        self.excludes_entry.insert(0, ", ".join(sorted(DEFAULT_EXCLUDE_DIRS)))
+
         # Right side: run/clear/hide/about
         action_buttons_frame = ttk.Frame(self.main_frame)
-        action_buttons_frame.grid(row=2, column=2, rowspan=4, sticky=tk.NE)
+        action_buttons_frame.grid(row=2, column=2, rowspan=6, sticky=tk.NE)
 
-        btn_run = ttk.Button(
+        self.btn_run = ttk.Button(
             action_buttons_frame,
             text="Run Tools",
             command=self.run_tools,
             width=13,
             style="Run.TButton"
         )
-        btn_run.pack(anchor="e", pady=(0,5))
-        create_tooltip(btn_run, "Generate the concatenated file and/or JSON structure.")
+        self.btn_run.pack(anchor="e", pady=(0,5))
+        create_tooltip(self.btn_run, "Generate the concatenated file and/or JSON structure.")
 
         btn_clear = ttk.Button(
             action_buttons_frame,
@@ -319,24 +361,60 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(btn_about, "Information about this tool, author, and license.")
 
         # 3) File/Structure/Log outputs
-        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="File Loader Output:").grid(row=5, column=0, sticky=tk.W)
         self.file_loader_output = ttk.Entry(self.main_frame, width=50)
-        self.file_loader_output.grid(row=3, column=1, sticky=tk.EW)
+        self.file_loader_output.grid(row=5, column=1, sticky=tk.EW)
         self.file_loader_output.insert(0, "loaded_files_output.txt")
 
-        ttk.Label(self.main_frame, text="Structure Output:").grid(row=4, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Structure Output:").grid(row=6, column=0, sticky=tk.W)
         self.structure_output = ttk.Entry(self.main_frame, width=50)
-        self.structure_output.grid(row=4, column=1, sticky=tk.EW)
+        self.structure_output.grid(row=6, column=1, sticky=tk.EW)
         self.structure_output.insert(0, "project_structure.json")
 
-        ttk.Label(self.main_frame, text="Log File:").grid(row=5, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Log File:").grid(row=7, column=0, sticky=tk.W)
         self.log_file_output = ttk.Entry(self.main_frame, width=50)
-        self.log_file_output.grid(row=5, column=1, sticky=tk.EW)
+        self.log_file_output.grid(row=7, column=1, sticky=tk.EW)
         self.log_file_output.insert(0, "file_loader_log.txt")
+
+        # Progress Bar:
+        ttk.Label(self.main_frame, text="Progress:").grid(row=8, column=0, sticky=tk.W)
+
+        # Progress + status stack in the center column
+        progress_col = ttk.Frame(self.main_frame)
+        progress_col.grid(row=8, column=1, sticky=tk.EW)
+        progress_col.columnconfigure(0, weight=1)
+
+        self.progress = ttk.Progressbar(
+            progress_col,
+            orient=tk.HORIZONTAL,
+            mode='determinate',
+            variable=self.progress_var,
+            maximum=100
+        )
+        self.progress.grid(row=0, column=0, sticky=tk.EW)
+        # label within progress bar:
+        self.status_label = ttk.Label(progress_col, text="Ready")
+        self.status_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Right-side column: Cancel only (use one geometry manager inside this frame)
+        progress_side = ttk.Frame(self.main_frame)
+        progress_side.grid(row=8, column=2, sticky=tk.E)
+
+        self.cancel_btn = ttk.Button(
+            progress_side,
+            text="Cancel",
+            command=self.cancel_run,
+            width=13,
+            state=tk.DISABLED
+        )
+        # Use grid here too (or switch both to pack), but don’t mix with grid inside the same frame
+        self.cancel_btn.grid(row=0, column=0, sticky=tk.E)
+
+
 
         # 4) PanedWindow => top=tree_panel, bottom=console_panel
         self.paned = ttk.Panedwindow(self.main_frame, orient=tk.VERTICAL)
-        self.paned.grid(row=7, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
+        self.paned.grid(row=10, column=0, columnspan=3, sticky=tk.NSEW, pady=5)
 
         self.tree_panel = ttk.Frame(self.paned)
         self.paned.add(self.tree_panel, weight=3)
@@ -345,7 +423,7 @@ class ToolRunnerUI(tk.Tk):
         self.paned.add(self.console_panel, weight=1)
 
         self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(7, weight=1)
+        self.main_frame.rowconfigure(10, weight=1)
 
         # 5) Top Pane: Tree label
         self.tree_label = ttk.Label(self.tree_panel, text="Project Tree", font=("Arial", 12, "bold"))
@@ -507,22 +585,35 @@ class ToolRunnerUI(tk.Tk):
         self.update_displaycolumns()
 
         # 6) Console Panel
-        self.console_label = ttk.Label(self.console_panel, text="Console Output", font=("Arial", 12, "bold"))
-        self.console_label.pack(side=tk.TOP, anchor="w", padx=5, pady=(5,0))
+        self.console_header = ttk.Frame(self.console_panel)
+        self.console_header.pack(side=tk.TOP, fill=tk.X, padx=5, pady=(5, 0))
+        self.console_label = ttk.Label(self.console_header, text="Console Output", font=("Arial", 12, "bold"))
+        self.console_label.pack(side=tk.LEFT, anchor="w")
+        self.copy_logs_btn = ttk.Button(self.console_header, text="Copy Logs", command=self.copy_logs_to_clipboard, width=12)
+        self.copy_logs_btn.pack(side=tk.RIGHT)
+        create_tooltip(self.copy_logs_btn, "Copy the current console log to the clipboard.")
 
         self.console = scrolledtext.ScrolledText(self.console_panel, height=10)
         self.console.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.console.configure(background="black", foreground="green", insertbackground="green")
+        self.console.tag_configure("INFO", foreground="lightgreen")
+        self.console.tag_configure("WARNING", foreground="yellow")
+        self.console.tag_configure("ERROR", foreground="red")
 
         # Redirect stdout to the console
         self.original_stdout = sys.stdout
         sys.stdout = TextRedirector(self.console, "stdout")
+        self.log_entries: List[str] = []
+
+        # Load persisted UI settings (if any) now that widgets exist
+        self._load_settings()
 
     def __del__(self) -> None:
         """
         Restore original stdout upon destruction.
         """
         sys.stdout = self.original_stdout
+
 
     ################################################
     # Show/Hide Columns
@@ -540,6 +631,85 @@ class ToolRunnerUI(tk.Tk):
         if self.col_vars["modified"].get():
             cols.append("modified")
         self.tree["displaycolumns"] = cols
+
+    def _get_excludes_text(self) -> str:
+        """
+        Return the default excludes list as a comma-separated string.
+        Used to seed the editable excludes entry on startup.
+        """
+        return ", ".join(sorted(DEFAULT_EXCLUDE_DIRS))
+
+    def _load_settings(self) -> None:
+        """
+        Load persisted UI settings (currently the excludes checkbox/text)
+        from SETTINGS_FILE, if it exists. Best-effort; errors are logged
+        but do not prevent the app from starting.
+        """
+        try:
+            if not os.path.isfile(SETTINGS_FILE):
+                # Ensure the entry state matches the default checkbox value
+                self._on_toggle_default_excludes()
+                return
+
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Restore checkbox
+            self.use_default_excludes.set(data.get("use_default_excludes", True))
+
+            # Restore entry text (fall back to defaults if missing)
+            excludes_text = data.get("excludes_text", self._get_excludes_text())
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                self.excludes_entry.delete(0, tk.END)
+                self.excludes_entry.insert(0, excludes_text)
+
+            # Apply enabled/disabled state based on checkbox
+            self._on_toggle_default_excludes()
+        except Exception as e:
+            # Attempt to log, but never crash initialization
+            try:
+                self._append_log_line("WARNING", f"Failed to load settings: {e}")
+            except Exception:
+                pass
+            try:
+                self._on_toggle_default_excludes()
+            except Exception:
+                pass
+
+    def _on_toggle_default_excludes(self) -> None:
+        """
+        Enable or disable the excludes entry based on the checkbox state.
+        When unchecked, the entry is disabled (and ignored when running tools).
+        """
+        if not hasattr(self, 'excludes_entry') or self.excludes_entry is None:
+            return
+        try:
+            if self.use_default_excludes.get():
+                self.excludes_entry.configure(state="normal")
+            else:
+                self.excludes_entry.configure(state="disabled")
+        except Exception as e:
+            self._append_log_line("WARNING", f"Failed to update excludes entry state: {e}")
+
+    def _save_settings(self) -> None:
+        """
+        Persist key UI settings to SETTINGS_FILE so that they survive restarts.
+        Currently persists the excludes checkbox state and text entry.
+        """
+        try:
+            excludes_text = self._get_excludes_text()
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                excludes_text = self.excludes_entry.get()
+
+            data = {
+                "use_default_excludes": bool(self.use_default_excludes.get()),
+                "excludes_text": excludes_text,
+            }
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            # Log but do not raise; closing the app should still succeed
+            self._append_log_line("WARNING", f"Failed to save settings: {e}")
 
     ################################################
     # Two-click "Collapse All" logic
@@ -650,37 +820,244 @@ class ToolRunnerUI(tk.Tk):
         Run whichever tools (File Loader, Project Structure) are selected,
         using the directory paths specified in dir_entry/output_dir_entry.
         """
-        project_root = self.dir_entry.get()
-        output_dir = self.output_dir_entry.get()
+        if self.running:
+            return
+
+        project_root = self.dir_entry.get().strip()
+        output_dir = self.output_dir_entry.get().strip()
 
         if not project_root or not os.path.isdir(project_root):
-            print("Error: Invalid project directory")
+            self._append_log_line("ERROR", "Invalid project directory")
+            return
+
+        if not (self.tool_vars['file_loader'].get() or self.tool_vars['project_structure'].get()):
+            self._append_log_line("WARNING", "Nothing selected to run.")
             return
 
         os.makedirs(output_dir, exist_ok=True)
 
+        # Prepare threading state
+        self.cancel_event = threading.Event()
+        self.running = True
+        self.btn_run.config(state=tk.DISABLED)
+        self.cancel_btn.config(state=tk.NORMAL)
+        self._set_progress_mode(indeterminate=True)
+        self.status_label.config(text="Running...")
+
+        # Capture selections
+        sel_file_loader = self.tool_vars['file_loader'].get()
+        sel_project_structure = self.tool_vars['project_structure'].get()
+
+        # Build the excludes set from the editable entry when enabled.
+        if self.use_default_excludes.get():
+            raw_excludes = ""
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                raw_excludes = self.excludes_entry.get()
+            excludes = {item.strip() for item in raw_excludes.split(",") if item.strip()}
+        else:
+            excludes = set()
+
+        # Keep a copy for tree filtering (Show Excluded Dirs)
+        self.active_excludes = set(excludes)
+
+        file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
+        log_output = os.path.join(output_dir, self.log_file_output.get())
+        structure_output = os.path.join(output_dir, self.structure_output.get())
+
+        # Start worker
+        self.worker_thread = threading.Thread(
+            target=self._worker_run,
+            args=(project_root, sel_file_loader, file_loader_output, log_output,
+                  sel_project_structure, structure_output, excludes),
+        )
+        self.worker_thread.start()
+        # Start polling UI queue
+        self.after(100, self._poll_status)
+
+    def cancel_run(self) -> None:
+        if self.cancel_event is not None and not self.cancel_event.is_set():
+            self.cancel_event.set()
+            # Inform via status queue; worker will also report
+            self.status_q.put({"type": "log", "level": "WARNING", "message": "Cancellation requested..."})
+
+    def _enqueue_log(self, message: str, level: str = "INFO") -> None:
+        derived_level, cleaned = self._extract_level_and_message(message)
+        final_level = derived_level or level
+        self.status_q.put({"type": "log", "level": final_level, "message": cleaned})
+
+    def _extract_level_and_message(self, message: str) -> Tuple[Optional[str], str]:
+        """
+        Parse strings like "[WARNING] something" so we can keep level metadata even
+        when upstream callers only provide a single string.
+        """
+        if message.startswith("["):
+            end = message.find("]")
+            if end > 1:
+                candidate = message[1:end].strip()
+                remainder = message[end + 1 :].lstrip()
+                if candidate:
+                    return candidate.upper(), remainder
+        return None, message
+
+    def _append_log_line(self, level: Optional[str], message: str) -> None:
+        tag = (level or "INFO").upper()
+        formatted = f"[{tag}] {message}"
+        self.log_entries.append(formatted)
+        self.console.configure(state="normal")
+        for line in formatted.splitlines():
+            self.console.insert("end", line + "\n", (tag,))
+        self.console.configure(state="disabled")
+        self.console.see("end")
+
+    def _progress_callback(self, stage: str, current: int, total: int, path: str) -> None:
+        # Only enqueue; UI thread will update controls
+        self.status_q.put({
+            "type": "progress",
+            "stage": stage,
+            "current": current,
+            "total": total,
+            "path": path,
+        })
+
+    def _set_progress_mode(self, indeterminate: bool) -> None:
+        if indeterminate and not self._indeterminate:
+            self.progress.config(mode='indeterminate')
+            self.progress.start(10)
+            self._indeterminate = True
+        elif not indeterminate and self._indeterminate:
+            self.progress.stop()
+            self.progress.config(mode='determinate')
+            self._indeterminate = False
+
+    def _poll_status(self) -> None:
+        # Drain queue and update UI
+        try:
+            while True:
+                item = self.status_q.get_nowait()
+                t = item.get("type")
+                if t == "progress":
+                    total = item.get("total", 0) or 0
+                    if total > 0:
+                        # determinate mode
+                        self._set_progress_mode(indeterminate=False)
+                        current = item.get("current", 0) or 0
+                        pct = max(0, min(100, int((current / total) * 100)))
+                        self.progress_var.set(pct)
+                    else:
+                        self._set_progress_mode(indeterminate=True)
+                    stage = item.get("stage", "")
+                    path = item.get("path", "")
+                    self.status_label.config(text=f"{stage}: {os.path.basename(path)}")
+                elif t == "log":
+                    self._append_log_line(item.get("level"), item.get("message", ""))
+                elif t == "ui" and item.get("action") == "load_structure":
+                    self.load_and_display_structure(item.get("path", ""))
+                elif t in ("done", "cancelled", "error"):
+                    # finalize
+                    if t == "done":
+                        self._append_log_line("INFO", "Operation completed successfully")
+                    elif t == "cancelled":
+                        self._append_log_line("WARNING", "Operation cancelled.")
+                    else:
+                        self._append_log_line("ERROR", f"Error: {item.get('message','Unknown error')}")
+                    self._finish_run()
+        except queue.Empty:
+            pass
+
+        if self.running:
+            self.after(150, self._poll_status)
+
+    def _finish_run(self) -> None:
+        self.running = False
+        self._set_progress_mode(indeterminate=False)
+        self.progress_var.set(0)
+        self.status_label.config(text="Ready")
+        self.btn_run.config(state=tk.NORMAL)
+        self.cancel_btn.config(state=tk.DISABLED)
+        # Best-effort worker cleanup
+        try:
+            if self.worker_thread is not None and self.worker_thread.is_alive():
+                self.worker_thread.join(timeout=0.1)
+        except Exception:
+            pass
+
+    def on_closing(self) -> None:
+        """
+        Handle window close: if a run is active, request cancel and join the
+        worker thread briefly before destroying the window to avoid abrupt
+        termination and partial outputs.
+        """
+        try:
+            # Persist current UI settings before exit (best-effort)
+            self._save_settings()
+
+            # If no worker or not running, safe to close immediately
+            if not self.running or self.worker_thread is None or not self.worker_thread.is_alive():
+                self.destroy()
+                return
+
+            # Prompt the user for confirmation
+            if messagebox.askyesno("Exit", "A run is in progress. Cancel and exit?"):
+                try:
+                    self.cancel_run()
+                except Exception:
+                    pass
+                try:
+                    # Join briefly to allow clean shutdown
+                    self.worker_thread.join(timeout=2.0)
+                except Exception:
+                    pass
+                # Proceed to close regardless; background thread should exit soon
+                self.destroy()
+            else:
+                # User chose not to exit
+                return
+        except Exception:
+            # Fallback to best-effort close
+            self.destroy()
+
+    def _worker_run(self,
+                    project_root: str,
+                    sel_file_loader: bool,
+                    file_loader_output: str,
+                    log_output: str,
+                    sel_project_structure: bool,
+                    structure_output: str,
+                    excludes: set[str]) -> None:
         try:
             # 1) File Loader
-            if self.tool_vars['file_loader'].get():
-                file_loader_output = os.path.join(output_dir, self.file_loader_output.get())
-                loader = FileLoaderTool(project_root)
-                files_dict = loader.load_files_in_directory(project_root)
+            if sel_file_loader:
+                loader = FileLoaderTool(project_root, logger=self._enqueue_log, exclude_dirs=excludes)
+                files_dict = loader.load_files_in_directory(
+                    project_root,
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    self.status_q.put({"type": "cancelled"})
+                    return
                 loader.save_file_contents(files_dict, file_loader_output)
-                loader.save_log(os.path.join(output_dir, self.log_file_output.get()))
-                print(f"File loader output saved to {file_loader_output}")
+                loader.save_log(log_output)
+                self._enqueue_log(f"File loader output saved to {file_loader_output}")
 
             # 2) Project Structure
-            if self.tool_vars['project_structure'].get():
-                structure_output = os.path.join(output_dir, self.structure_output.get())
-                structure_tool = ProjectStructureTool(project_root)
-                structure_tool.build_project_structure()
+            if sel_project_structure:
+                structure_tool = ProjectStructureTool(project_root, logger=self._enqueue_log, exclude_dirs=excludes)
+                structure_tool.build_project_structure(
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
+                )
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    self.status_q.put({"type": "cancelled"})
+                    return
                 structure_tool.save_project_structure(structure_output)
-                print(f"Project structure saved to {structure_output}")
-                self.load_and_display_structure(structure_output)
+                self._enqueue_log(f"Project structure saved to {structure_output}")
+                # Request UI to load structure
+                self.status_q.put({"type": "ui", "action": "load_structure", "path": structure_output})
 
-            print("Operation completed successfully\n")
+            self.status_q.put({"type": "done"})
         except Exception as e:
-            print(f"Error: {str(e)}")
+            self.status_q.put({"type": "error", "message": str(e)})
 
     def clear_console(self) -> None:
         """
@@ -689,6 +1066,19 @@ class ToolRunnerUI(tk.Tk):
         self.console.configure(state="normal")
         self.console.delete(1.0, tk.END)
         self.console.configure(state="disabled")
+        self.log_entries.clear()
+
+    def copy_logs_to_clipboard(self) -> None:
+        """
+        Copy the current console logs (with level prefixes) to the clipboard.
+        """
+        if not self.log_entries:
+            messagebox.showinfo("Copy Logs", "No logs to copy yet.")
+            return
+        snapshot = "\n".join(self.log_entries)
+        self.clipboard_clear()
+        self.clipboard_append(snapshot)
+        self._append_log_line("INFO", "Logs copied to clipboard.")
 
     ################################################
     # Build & Display ASCII Tree (with real root name + folder file counts)
@@ -720,10 +1110,10 @@ class ToolRunnerUI(tk.Tk):
                 for key in top_keys:
                     self._build_tree_ascii("", structure[key], [], key)
 
-            print("Project structure loaded in UI")
+            self._append_log_line("INFO", "Project structure loaded in UI")
 
         except Exception as e:
-            print(f"Error loading structure: {str(e)}")
+            self._append_log_line("ERROR", f"Error loading structure: {str(e)}")
             return
 
         # Step 2: restore expansions
@@ -869,7 +1259,8 @@ class ToolRunnerUI(tk.Tk):
         """
         if self.show_excluded.get():
             return True
-        excluded_dirs = {'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git'}
+        # Use the same excludes set that was passed to the tools
+        excluded_dirs = getattr(self, "active_excludes", set(DEFAULT_EXCLUDE_DIRS))
         return dirname not in excluded_dirs
 
     ################################################
@@ -907,7 +1298,7 @@ class ToolRunnerUI(tk.Tk):
                     for key in top_keys:
                         self._build_tree_ascii("", structure[key], [], key)
             except Exception as e:
-                print(f"Error refreshing tree: {str(e)}")
+                self._append_log_line("ERROR", f"Error refreshing tree: {str(e)}")
 
         # Apply file-type filter
         file_type = self.file_types.get()
@@ -924,7 +1315,7 @@ class ToolRunnerUI(tk.Tk):
         """
         struct_file = os.path.join(self.output_dir_entry.get(), self.structure_output.get())
         if not os.path.isfile(struct_file):
-            print("No structure file to copy from.")
+            self._append_log_line("WARNING", "No structure file to copy from.")
             return
 
         with open(struct_file, 'r', encoding='utf-8') as f:
@@ -946,7 +1337,7 @@ class ToolRunnerUI(tk.Tk):
         tree_text = "\n".join(lines)
         self.clipboard_clear()
         self.clipboard_append(tree_text)
-        print("Tree structure (filtered by visible columns) copied to clipboard!")
+        self._append_log_line("INFO", "Tree structure (filtered by visible columns) copied to clipboard!")
 
     def _ascii_export_folder(
         self,

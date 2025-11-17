@@ -69,3 +69,6 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/ 
+
+# Local UI settings
+tool_runner_settings.json
