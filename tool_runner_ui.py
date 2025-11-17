@@ -330,6 +330,16 @@ class ToolRunnerUI(tk.Tk):
         btn_clear.pack(anchor="e", pady=(0,5))
         create_tooltip(btn_clear, "Clears the console output area.")
 
+        btn_reset = ttk.Button(
+            action_buttons_frame,
+            text="Reset Settings",
+            command=self.reset_settings,
+            width=13,
+            style="Clear.TButton"
+        )
+        btn_reset.pack(anchor="e", pady=(0,5))
+        create_tooltip(btn_reset, "Reset project paths, tool selection, columns, and excludes to defaults.")
+
         btn_hide_tree = ttk.Button(
             action_buttons_frame,
             text="Hide Tree",
@@ -641,9 +651,8 @@ class ToolRunnerUI(tk.Tk):
 
     def _load_settings(self) -> None:
         """
-        Load persisted UI settings (currently the excludes checkbox/text)
-        from SETTINGS_FILE, if it exists. Best-effort; errors are logged
-        but do not prevent the app from starting.
+        Load persisted UI settings from SETTINGS_FILE, if it exists.
+        Best-effort; errors are logged but do not prevent the app from starting.
         """
         try:
             if not os.path.isfile(SETTINGS_FILE):
@@ -654,7 +663,7 @@ class ToolRunnerUI(tk.Tk):
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Restore checkbox
+            # Restore excludes checkbox
             self.use_default_excludes.set(data.get("use_default_excludes", True))
 
             # Restore entry text (fall back to defaults if missing)
@@ -665,6 +674,42 @@ class ToolRunnerUI(tk.Tk):
 
             # Apply enabled/disabled state based on checkbox
             self._on_toggle_default_excludes()
+
+            # Restore project root, if present
+            project_root = data.get("project_root")
+            if project_root:
+                self.dir_entry.delete(0, tk.END)
+                self.dir_entry.insert(0, project_root)
+
+            # Restore output directory, if present
+            output_dir = data.get("output_dir")
+            if output_dir:
+                self.output_dir_entry.delete(0, tk.END)
+                self.output_dir_entry.insert(0, output_dir)
+
+            # Restore selected tools (File Loader / Project Structure)
+            tools = data.get("tools", {})
+            if "file_loader" in tools:
+                self.tool_vars["file_loader"].set(bool(tools.get("file_loader", True)))
+            if "project_structure" in tools:
+                self.tool_vars["project_structure"].set(bool(tools.get("project_structure", True)))
+
+            # Restore visible columns
+            columns = data.get("columns", {})
+            if columns:
+                self.col_vars["size"].set(bool(columns.get("size", True)))
+                self.col_vars["created"].set(bool(columns.get("created", True)))
+                self.col_vars["modified"].set(bool(columns.get("modified", True)))
+                self.update_displaycolumns()
+
+            # Restore window geometry (if valid)
+            geometry = data.get("window_geometry")
+            if geometry:
+                try:
+                    self.geometry(geometry)
+                except Exception:
+                    # Ignore invalid geometry values
+                    pass
         except Exception as e:
             # Attempt to log, but never crash initialization
             try:
@@ -694,22 +739,89 @@ class ToolRunnerUI(tk.Tk):
     def _save_settings(self) -> None:
         """
         Persist key UI settings to SETTINGS_FILE so that they survive restarts.
-        Currently persists the excludes checkbox state and text entry.
         """
         try:
             excludes_text = self._get_excludes_text()
             if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
                 excludes_text = self.excludes_entry.get()
 
+            # Core path and tool selections
+            project_root = self.dir_entry.get()
+            output_dir = self.output_dir_entry.get()
+
+            tools = {
+                "file_loader": bool(self.tool_vars["file_loader"].get()),
+                "project_structure": bool(self.tool_vars["project_structure"].get()),
+            }
+
+            columns = {
+                "size": bool(self.col_vars["size"].get()),
+                "created": bool(self.col_vars["created"].get()),
+                "modified": bool(self.col_vars["modified"].get()),
+            }
+
             data = {
                 "use_default_excludes": bool(self.use_default_excludes.get()),
                 "excludes_text": excludes_text,
+                "project_root": project_root,
+                "output_dir": output_dir,
+                "tools": tools,
+                "columns": columns,
+                "window_geometry": self.geometry(),
             }
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             # Log but do not raise; closing the app should still succeed
             self._append_log_line("WARNING", f"Failed to save settings: {e}")
+
+    def reset_settings(self) -> None:
+        """
+        Reset key UI settings back to their defaults and remove any
+        persisted settings file. Best-effort; failures are logged.
+        """
+        try:
+            # Project root and output directory
+            self.dir_entry.delete(0, tk.END)
+            self.output_dir_entry.delete(0, tk.END)
+            self.output_dir_entry.insert(0, "Tools_Outputs")
+
+            # Tool selections
+            self.tool_vars["file_loader"].set(True)
+            self.tool_vars["project_structure"].set(True)
+
+            # Column visibility
+            self.col_vars["size"].set(True)
+            self.col_vars["created"].set(True)
+            self.col_vars["modified"].set(True)
+            self.update_displaycolumns()
+
+            # Excludes: reset to defaults and ensure enabled
+            self.use_default_excludes.set(True)
+            default_excludes = self._get_excludes_text()
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                self.excludes_entry.configure(state="normal")
+                self.excludes_entry.delete(0, tk.END)
+                self.excludes_entry.insert(0, default_excludes)
+            self._on_toggle_default_excludes()
+
+            # Optionally reset window size (do not force position)
+            try:
+                self.geometry("900x600")
+            except Exception:
+                pass
+
+            # Remove settings file so next start is clean
+            try:
+                if os.path.isfile(SETTINGS_FILE):
+                    os.remove(SETTINGS_FILE)
+            except Exception as exc:
+                self._append_log_line("WARNING", f"Failed to delete settings file: {exc}")
+
+            # Persist the freshly reset settings
+            self._save_settings()
+        except Exception as e:
+            self._append_log_line("WARNING", f"Failed to reset settings: {e}")
 
     ################################################
     # Two-click "Collapse All" logic
