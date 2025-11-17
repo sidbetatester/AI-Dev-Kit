@@ -112,12 +112,12 @@ P0‑06: Structured Logging & Copy Logs Action — Completed
 
 Phase 1 — UX Quick Wins
 
-P1‑01: Persist Settings
-- Summary: Save last project/output dirs, selected tools, column visibility, window size.
-- Files: tool_runner_ui.py (add config load/save JSON)
+P1‑01: Persist Settings — Completed
+- Summary: Save last project/output dirs, selected tools, column visibility, window size, and excludes.
+- Files: tool_runner_ui.py (config load/save JSON)
 - Acceptance
   - Relaunch restores last settings by default.
-  - “Reset to defaults” button clears saved config.
+  - “Reset Settings” button clears saved config back to defaults.
 - Estimate: S
 
 P1‑02: Tree Context Menu (Open/Reveal/Copy Path)
