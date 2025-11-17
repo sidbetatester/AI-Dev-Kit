@@ -316,7 +316,10 @@ class ProjectStructureTool:
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Structure file not found: {input_file}") from e
         except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(f"Invalid JSON in structure file: {e}", e.doc, e.pos) from e
+            # Preserve the original decode error details but attach the file path.
+            raise json.JSONDecodeError(
+                f"Invalid JSON in structure file: {input_file}", e.doc, e.pos
+            ) from e
 
 
 if __name__ == "__main__":

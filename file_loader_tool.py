@@ -198,8 +198,9 @@ class FileLoaderTool:
                     # Attempt to read using encoding fallback strategy
                     content, used, err = self._read_text_with_fallback(file_path)
                     if content is None:
-                        # Propagate meaningful failure preserving context
-                        raise RuntimeError(f"Failed to decode text file: {file_path}") from err
+                        # Treat as an I/O-style failure so it's handled
+                        # by the outer OSError block and logged/skipped.
+                        raise OSError(f"Failed to decode text file: {file_path}") from err
                     file_contents[str(file_path)] = content
                     self.processed_files.append(str(file_path))
                     processed_count += 1
