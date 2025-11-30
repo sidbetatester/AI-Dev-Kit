@@ -231,6 +231,9 @@ class ToolRunnerUI(tk.Tk):
         # Active excludes set used both for tooling and tree filtering
         self.active_excludes: set[str] = set(DEFAULT_EXCLUDE_DIRS)
 
+        # Map tree item IDs to their absolute file paths for context menu
+        self._tree_item_paths: Dict[str, str] = {}
+
         # Configure TTK styles for various colored buttons
         style = ttk.Style(self)
         # self._apply_consistent_theme(style)
@@ -590,6 +593,10 @@ class ToolRunnerUI(tk.Tk):
         hsb.grid(row=1, column=0, sticky=tk.EW)
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
+
+        # Context menu for tree items
+        self._create_context_menu()
+        self.tree.bind("<Button-3>", self._on_tree_right_click)
 
         # Initially show all columns
         self.update_displaycolumns()
@@ -1193,6 +1200,132 @@ class ToolRunnerUI(tk.Tk):
         self._append_log_line("INFO", "Logs copied to clipboard.")
 
     ################################################
+    # Context Menu for Tree
+    ################################################
+    def _create_context_menu(self) -> None:
+        """Create the right-click context menu for tree items."""
+        self.tree_context_menu = tk.Menu(self, tearoff=0)
+        self.tree_context_menu.add_command(label="Open File", command=self._on_context_open_file)
+        self.tree_context_menu.add_command(label="Open in Explorer", command=self._on_context_open_folder)
+        self.tree_context_menu.add_separator()
+        self.tree_context_menu.add_command(label="Copy Path", command=self._on_context_copy_path)
+
+    def _on_tree_right_click(self, event: tk.Event) -> None:
+        """Handle right-click on tree item to show context menu."""
+        # Identify the item under the cursor
+        item_id = self.tree.identify_row(event.y)
+        if not item_id:
+            return  # Clicked on empty space
+        
+        # Select the item
+        self.tree.selection_set(item_id)
+        self.tree.focus(item_id)
+        
+        # Show context menu at cursor position
+        try:
+            self.tree_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.tree_context_menu.grab_release()
+
+    def _on_context_open_file(self) -> None:
+        """Open the selected file in the default application."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        tags = self.tree.item(item_id, 'tags')
+        
+        # Only open if it's a file
+        if 'file' not in tags:
+            messagebox.showwarning("Open File", "Please select a file to open.")
+            return
+        
+        file_path = self._tree_item_paths.get(item_id)
+        if not file_path or not os.path.isfile(file_path):
+            messagebox.showerror("Open File", "File path not found or file does not exist.")
+            return
+        
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(file_path)
+            elif sys.platform == 'darwin':  # macOS
+                import subprocess
+                subprocess.run(['open', file_path], check=False)
+            else:  # Linux and others
+                import subprocess
+                subprocess.run(['xdg-open', file_path], check=False)
+            self._append_log_line("INFO", f"Opened file: {file_path}")
+        except Exception as e:
+            messagebox.showerror("Open File", f"Failed to open file:\n{str(e)}")
+            self._append_log_line("ERROR", f"Failed to open file {file_path}: {str(e)}")
+
+    def _on_context_open_folder(self) -> None:
+        """Open the folder containing the selected item in file explorer."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        item_path = self._tree_item_paths.get(item_id)
+        
+        if not item_path:
+            messagebox.showerror("Open Folder", "Path not found.")
+            return
+        
+        # If it's a file, get the parent directory
+        if os.path.isfile(item_path):
+            folder_path = os.path.dirname(item_path)
+        else:
+            folder_path = item_path
+        
+        if not os.path.isdir(folder_path):
+            messagebox.showerror("Open Folder", "Folder does not exist.")
+            return
+        
+        try:
+            if os.name == 'nt':  # Windows
+                # Debug: log the path being used
+                self._append_log_line("INFO", f"Opening in explorer - item_path: {item_path}, folder_path: {folder_path}")
+                
+                # If it's a file, use /select to open folder and highlight the file
+                if os.path.isfile(item_path):
+                    cmd = f'explorer /select,"{item_path}"'
+                    self._append_log_line("INFO", f"Running command: {cmd}")
+                    os.system(cmd)
+                else:
+                    # For folders, use os.startfile to open them
+                    self._append_log_line("INFO", f"Opening folder with startfile: {folder_path}")
+                    os.startfile(folder_path)
+            elif sys.platform == 'darwin':  # macOS
+                import subprocess
+                subprocess.run(['open', folder_path], check=False)
+            else:  # Linux and others
+                import subprocess
+                subprocess.run(['xdg-open', folder_path], check=False)
+            self._append_log_line("INFO", f"Opened folder: {folder_path}")
+        except Exception as e:
+            messagebox.showerror("Open Folder", f"Failed to open folder:\n{str(e)}")
+            self._append_log_line("ERROR", f"Failed to open folder {folder_path}: {str(e)}")
+
+    def _on_context_copy_path(self) -> None:
+        """Copy the absolute path of the selected item to clipboard."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        item_path = self._tree_item_paths.get(item_id)
+        
+        if not item_path:
+            messagebox.showwarning("Copy Path", "Path not available.")
+            return
+        
+        self.clipboard_clear()
+        self.clipboard_append(item_path)
+        self._append_log_line("INFO", f"Copied path to clipboard: {item_path}")
+
+    ################################################
     # Build & Display ASCII Tree (with real root name + folder file counts)
     ################################################
     def load_and_display_structure(self, json_file: str) -> None:
@@ -1210,17 +1343,27 @@ class ToolRunnerUI(tk.Tk):
 
             # Clear old tree first
             self.tree.delete(*self.tree.get_children())
+            # Clear path mapping
+            self._tree_item_paths.clear()
+
+            # Get project root for building absolute paths
+            project_root = self.dir_entry.get().strip()
+            if not project_root or not os.path.isdir(project_root):
+                self._append_log_line("WARNING", "Project root not set; paths will not be available for context menu.")
+                project_root = ""
 
             # If there's exactly one top-level key, treat that as the root folder
             top_keys = sorted(structure.keys())
             if len(top_keys) == 1:
                 root_name = top_keys[0]
                 root_data = structure[root_name]
-                self._build_tree_ascii("", root_data, [], root_name)
+                # Use project_root directly since it already points to the root folder
+                self._build_tree_ascii("", root_data, [], root_name, project_root)
             else:
                 # multiple top-level folders
                 for key in top_keys:
-                    self._build_tree_ascii("", structure[key], [], key)
+                    key_path = os.path.join(project_root, key) if project_root else key
+                    self._build_tree_ascii("", structure[key], [], key, key_path)
 
             self._append_log_line("INFO", "Project structure loaded in UI")
 
@@ -1236,7 +1379,8 @@ class ToolRunnerUI(tk.Tk):
         parent_node: str,
         data: Dict[str, Any],
         ancestors: List[bool],
-        folder_name: str
+        folder_name: str,
+        current_path: str = ""
     ) -> None:
         """
         Insert exactly one node for 'folder_name', then recursively
@@ -1270,6 +1414,10 @@ class ToolRunnerUI(tk.Tk):
             tags=('folder',),
             open=False
         )
+        
+        # Store folder path for context menu
+        if current_path:
+            self._tree_item_paths[folder_id] = current_path
 
         # Extract subfolders, files
         subfolders: Dict[str, Any] = data.get("subfolders", {})
@@ -1307,11 +1455,13 @@ class ToolRunnerUI(tk.Tk):
 
             if kind == "folder":
                 # Recursively call _build_tree_ascii for the subfolder
+                subfolder_path = os.path.join(current_path, str(child)) if current_path else ""
                 self._build_tree_ascii(
                     parent_node=folder_id,
                     data=subdata,
                     ancestors=ancestors + [is_last_child],
-                    folder_name=str(child)
+                    folder_name=str(child),
+                    current_path=subfolder_path
                 )
 
             elif kind == "fileobj":
@@ -1335,13 +1485,18 @@ class ToolRunnerUI(tk.Tk):
                 created_str = fcreated or ""
                 mod_str = fmod or ""
 
-                self.tree.insert(
+                file_id = self.tree.insert(
                     folder_id,
                     "end",
                     text=file_text,
                     values=(size_str, created_str, mod_str),
                     tags=('file',)
                 )
+                
+                # Store file path for context menu
+                if current_path:
+                    file_path = os.path.join(current_path, fname)
+                    self._tree_item_paths[file_id] = file_path
 
             else:
                 # Plain string for a file
@@ -1355,13 +1510,18 @@ class ToolRunnerUI(tk.Tk):
                 ascii_child_prefix = "".join(child_prefix_parts)
 
                 fname_str = f"{ascii_child_prefix}{child}"
-                self.tree.insert(
+                file_id = self.tree.insert(
                     folder_id,
                     "end",
                     text=fname_str,
                     values=("", "", ""),
                     tags=('file',)
                 )
+                
+                # Store file path for context menu  
+                if current_path:
+                    file_path = os.path.join(current_path, str(child))
+                    self._tree_item_paths[file_id] = file_path
 
     def _should_show_dir(self, dirname: str) -> bool:
         """
@@ -1401,14 +1561,23 @@ class ToolRunnerUI(tk.Tk):
                 with open(path, 'r', encoding='utf-8') as f:
                     structure: Dict[str, Any] = json.load(f)
                 self.tree.delete(*self.tree.get_children())
+                # Clear path mapping
+                self._tree_item_paths.clear()
+                
+                # Get project root for building absolute paths
+                project_root = self.dir_entry.get().strip()
+                if not project_root or not os.path.isdir(project_root):
+                    project_root = ""
 
                 top_keys = sorted(structure.keys())
                 if len(top_keys) == 1:
                     root_name = top_keys[0]
-                    self._build_tree_ascii("", structure[root_name], [], root_name)
+                    # Use project_root directly since it already points to the root folder
+                    self._build_tree_ascii("", structure[root_name], [], root_name, project_root)
                 else:
                     for key in top_keys:
-                        self._build_tree_ascii("", structure[key], [], key)
+                        key_path = os.path.join(project_root, key) if project_root else key
+                        self._build_tree_ascii("", structure[key], [], key, key_path)
             except Exception as e:
                 self._append_log_line("ERROR", f"Error refreshing tree: {str(e)}")
 
@@ -1861,4 +2030,10 @@ class ToolRunnerUI(tk.Tk):
 ################################################
 if __name__ == "__main__":
     app = ToolRunnerUI()
+    
+    # Periodic check to allow Ctrl+C to be processed
+    def check_for_signals():
+        app.after(100, check_for_signals)
+    
+    app.after(100, check_for_signals)
     app.mainloop()

@@ -14,7 +14,7 @@ from pathlib import Path  # For cross-platform path handling
 # Default directory names to exclude from traversal
 DEFAULT_EXCLUDE_DIRS: Set[str] = {
     'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
-    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache', 'htmlcov', '.hypothesis', '.coverage'
 }
 
 

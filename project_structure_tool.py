@@ -16,7 +16,7 @@ from typing import Dict, Any, List, TypedDict, Optional, Callable
 # Default directory names to exclude from traversal
 DEFAULT_EXCLUDE_DIRS: set[str] = {
     'venv', '__pycache__', '.venv', 'env', 'node_modules', '.git', '.idea',
-    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache'
+    '.tox', 'dist', 'build', '.mypy_cache', '.pytest_cache', 'htmlcov', '.hypothesis', '.coverage'
 }
 
 class FileInfo(TypedDict):
