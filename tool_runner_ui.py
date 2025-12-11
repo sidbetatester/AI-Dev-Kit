@@ -1285,18 +1285,22 @@ class ToolRunnerUI(tk.Tk):
         
         try:
             if os.name == 'nt':  # Windows
+                # Normalize paths to use Windows backslashes
+                item_path_normalized = os.path.normpath(item_path)
+                folder_path_normalized = os.path.normpath(folder_path)
+                
                 # Debug: log the path being used
-                self._append_log_line("INFO", f"Opening in explorer - item_path: {item_path}, folder_path: {folder_path}")
+                self._append_log_line("INFO", f"Opening in explorer - item_path: {item_path_normalized}, folder_path: {folder_path_normalized}")
                 
                 # If it's a file, use /select to open folder and highlight the file
                 if os.path.isfile(item_path):
-                    cmd = f'explorer /select,"{item_path}"'
+                    cmd = f'explorer /select,"{item_path_normalized}"'
                     self._append_log_line("INFO", f"Running command: {cmd}")
                     os.system(cmd)
                 else:
                     # For folders, use os.startfile to open them
-                    self._append_log_line("INFO", f"Opening folder with startfile: {folder_path}")
-                    os.startfile(folder_path)
+                    self._append_log_line("INFO", f"Opening folder with startfile: {folder_path_normalized}")
+                    os.startfile(folder_path_normalized)
             elif sys.platform == 'darwin':  # macOS
                 import subprocess
                 subprocess.run(['open', folder_path], check=False)
