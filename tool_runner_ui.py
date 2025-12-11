@@ -248,34 +248,68 @@ class ToolRunnerUI(tk.Tk):
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # 1) Directory selection
-        ttk.Label(self.main_frame, text="Project Root:").grid(row=0, column=0, sticky=tk.W)
-        self.dir_entry = ttk.Entry(self.main_frame, width=50)
-        self.dir_entry.grid(row=0, column=1, sticky=tk.EW)
-        btn_root = ttk.Button(self.main_frame, text="Browse...", command=self.select_directory, width=13)
-        btn_root.grid(row=0, column=2)
+        # 0) Input Mode Selection (Local vs Remote Git)
+        self.input_mode = tk.StringVar(value="local")
+        ttk.Label(self.main_frame, text="Input Mode:").grid(row=0, column=0, sticky=tk.W)
+        mode_frame = ttk.Frame(self.main_frame)
+        mode_frame.grid(row=0, column=1, sticky=tk.W, columnspan=2)
+        
+        rb_local = ttk.Radiobutton(
+            mode_frame, 
+            text="Local Folder", 
+            variable=self.input_mode,
+            value="local",
+            command=self._on_mode_change
+        )
+        rb_local.pack(side=tk.LEFT, padx=5)
+        
+        rb_remote = ttk.Radiobutton(
+            mode_frame,
+            text="Git Repository",
+            variable=self.input_mode,
+            value="remote",
+            command=self._on_mode_change
+        )
+        rb_remote.pack(side=tk.LEFT, padx=5)
+        
+        create_tooltip(rb_local, "Scan a local project folder")
+        create_tooltip(rb_remote, "Clone and scan a remote Git repository (GitHub/GitLab)")
+
+        # 1) Directory selection / Git URL (toggles based on mode)
+        ttk.Label(self.main_frame, text="Project Root:", name="local_label").grid(row=1, column=0, sticky=tk.W)
+        self.dir_entry = ttk.Entry(self.main_frame, width=50, name="local_entry")
+        self.dir_entry.grid(row=1, column=1, sticky=tk.EW)
+        self.btn_root = ttk.Button(self.main_frame, text="Browse...", command=self.select_directory, width=13, name="local_browse")
+        self.btn_root.grid(row=1, column=2)
 
         create_tooltip(self.dir_entry, "Path to your top-level project folder.")
-        create_tooltip(btn_root, "Select the project root directory.")
+        create_tooltip(self.btn_root, "Select the project root directory.")
+        
+        # Git URL field (initially hidden)
+        self.git_url_label = ttk.Label(self.main_frame, text="Git URL:", name="git_label")
+        self.git_url_entry = ttk.Entry(self.main_frame, width=50, name="git_entry")
+        
+        create_tooltip(self.git_url_entry, "Enter repository URL (e.g., https://github.com/user/repo)")
 
-        ttk.Label(self.main_frame, text="Output Directory:").grid(row=1, column=0, sticky=tk.W)
+        # 2) Output Directory
+        ttk.Label(self.main_frame, text="Output Directory:").grid(row=2, column=0, sticky=tk.W)
         self.output_dir_entry = ttk.Entry(self.main_frame, width=50)
-        self.output_dir_entry.grid(row=1, column=1, sticky=tk.EW)
+        self.output_dir_entry.grid(row=2, column=1, sticky=tk.EW)
         self.output_dir_entry.insert(0, "Tools_Outputs")
         btn_out = ttk.Button(self.main_frame, text="Browse...", command=self.select_output_dir, width=13)
-        btn_out.grid(row=1, column=2)
+        btn_out.grid(row=2, column=2)
 
         create_tooltip(self.output_dir_entry, "Where logs, concatenated files, and JSON structures go.")
         create_tooltip(btn_out, "Select the output directory.")
 
-        # 2) Tool selection
+        # 3) Tool selection
         self.tool_vars = {
             'file_loader': tk.BooleanVar(value=True),
             'project_structure': tk.BooleanVar(value=True)
         }
-        ttk.Label(self.main_frame, text="Select Tools:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Select Tools:").grid(row=3, column=0, sticky=tk.W)
         tools_frame = ttk.Frame(self.main_frame)
-        tools_frame.grid(row=2, column=1, sticky=tk.W)
+        tools_frame.grid(row=3, column=1, sticky=tk.W)
 
         chk_loader = ttk.Checkbutton(tools_frame, text="File Loader", variable=self.tool_vars['file_loader'])
         chk_struct = ttk.Checkbutton(tools_frame, text="Project Structure", variable=self.tool_vars['project_structure'])
@@ -286,11 +320,11 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(chk_struct, "Generate & display a JSON project structure in an ASCII tree.")
 
         # Default exclude rules
-        ttk.Label(self.main_frame, text="Excludes:").grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Excludes:").grid(row=4, column=0, sticky=tk.W)
         # Default exclude rules visibility/toggle
         self.use_default_excludes = tk.BooleanVar(value=True)
         excludes_frame = ttk.Frame(self.main_frame)
-        excludes_frame.grid(row=3, column=1, sticky=tk.EW)
+        excludes_frame.grid(row=4, column=1, sticky=tk.EW)
         excludes_frame.columnconfigure(1, weight=1)
 
         chk_default_ex = ttk.Checkbutton(
@@ -631,6 +665,30 @@ class ToolRunnerUI(tk.Tk):
         """
         sys.stdout = self.original_stdout
 
+    def _on_mode_change(self) -> None:
+        """Toggle UI elements based on selected input mode (local vs remote)."""
+        mode = self.input_mode.get()
+        
+        if mode == "local":
+            # Show local folder fields
+            self.main_frame.nametowidget("local_label").grid(row=1, column=0, sticky=tk.W)
+            self.main_frame.nametowidget("local_entry").grid(row=1, column=1, sticky=tk.EW)
+            self.main_frame.nametowidget("local_browse").grid(row=1, column=2)
+            
+            # Hide Git URL fields
+            self.git_url_label.grid_forget()
+            self.git_url_entry.grid_forget()
+            
+        else:  # mode == "remote"
+            # Hide local folder fields
+            self.main_frame.nametowidget("local_label").grid_forget()
+            self.main_frame.nametowidget("local_entry").grid_forget()
+            self.main_frame.nametowidget("local_browse").grid_forget()
+            
+            # Show Git URL fields
+            self.git_url_label.grid(row=1, column=0, sticky=tk.W)
+            self.git_url_entry.grid(row=1, column=1, sticky=tk.EW, columnspan=2)
+
 
     ################################################
     # Show/Hide Columns
@@ -942,7 +1000,56 @@ class ToolRunnerUI(tk.Tk):
         if self.running:
             return
 
-        project_root = self.dir_entry.get().strip()
+        mode = self.input_mode.get()
+        
+        # Handle Git repository mode
+        if mode == "remote":
+            git_url = self.git_url_entry.get().strip()
+            if not git_url:
+                self._append_log_line("ERROR", "Please enter a Git repository URL")
+                return
+            
+            # Import Git tool
+            try:
+                from git_remote_tool import GitRemoteTool
+            except ImportError:
+                self._append_log_line("ERROR", "git_remote_tool.py not found")
+                return
+            
+            # Check if git is installed
+            git_tool = GitRemoteTool(logger=lambda msg: self._append_log_line("INFO", msg))
+            if not git_tool.check_git_installed():
+                messagebox.showerror(
+                    "Git Not Found",
+                    "Git is not installed on your system.\n\n"
+                    "Please install Git from: https://git-scm.com/downloads"
+                )
+                return
+            
+            # Clone repository
+            self._append_log_line("INFO", f"Cloning repository: {git_url}")
+            
+            # Get token from settings (if set)
+            # TODO: Implement token storage/retrieval
+            token = None  # For now, only support public repos
+            
+            success, temp_path, error = git_tool.clone_repository(git_url, token)
+            
+            if not success:
+                self._append_log_line("ERROR", f"Failed to clone repository: {error}")
+                return
+            
+            # Use the cloned directory as project_root
+            project_root = temp_path
+            self._append_log_line("INFO", f"Repository cloned to: {project_root}")
+            
+            # Store temp path for cleanup later
+            self._git_temp_path = temp_path
+            
+        else:  # local mode
+            project_root = self.dir_entry.get().strip()
+            self._git_temp_path = None  # No cleanup needed
+
         output_dir = self.output_dir_entry.get().strip()
 
         if not project_root or not os.path.isdir(project_root):
@@ -1093,6 +1200,34 @@ class ToolRunnerUI(tk.Tk):
         self.status_label.config(text="Ready")
         self.btn_run.config(state=tk.NORMAL)
         self.cancel_btn.config(state=tk.DISABLED)
+        
+        # Clean up Git clone if present
+        if hasattr(self, '_git_temp_path') and self._git_temp_path:
+            temp_path = self._git_temp_path
+            self._append_log_line("INFO", f"Cleaning up temporary clone directory: {temp_path}")
+            try:
+                import shutil
+                import stat
+                
+                def handle_remove_readonly(func, path, exc):
+                    """Error handler for Windows read-only files."""
+                    if os.name == 'nt':
+                        # Remove read-only attribute and try again
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                    else:
+                        raise
+                
+                if os.path.exists(temp_path):
+                    shutil.rmtree(temp_path, onerror=handle_remove_readonly)
+                    self._append_log_line("INFO", f"Successfully deleted: {temp_path}")
+                else:
+                    self._append_log_line("WARNING", f"Temp directory not found: {temp_path}")
+                self._git_temp_path = None
+            except Exception as e:
+                self._append_log_line("ERROR", f"Failed to cleanup temp directory: {str(e)}")
+                self._append_log_line("WARNING", f"Please manually delete: {temp_path}")
+        
         # Best-effort worker cleanup
         try:
             if self.worker_thread is not None and self.worker_thread.is_alive():
