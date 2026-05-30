@@ -47,9 +47,18 @@ def test_core_allowlist() -> None:
 
     for name in root_modules:
         if name in CORE_MODULES:
+            resp = client.get(f"/core/{name}")
             check(
-                client.get(f"/core/{name}").status_code == 200,
+                resp.status_code == 200,
                 f"core module GET /core/{name} returns 200",
+            )
+            # Privacy/parity promise: the browser must run the *exact same*
+            # bytes the desktop app imports. A 200 alone is not enough — assert
+            # the served body is byte-for-byte identical to the on-disk module.
+            on_disk = (ROOT / name).read_bytes()
+            check(
+                resp.data == on_disk,
+                f"core module GET /core/{name} is byte-for-byte identical to disk",
             )
         else:
             check(
