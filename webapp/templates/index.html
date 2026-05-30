@@ -89,6 +89,7 @@
             <option value="">All types</option>
           </select>
           <label class="check inline" data-tip="Show each file's size in the tree."><input type="checkbox" id="show-size" checked /> Size</label>
+          <label class="check inline" data-tip="Show each file's creation date in the tree (not available on all systems)."><input type="checkbox" id="show-created" checked /> Created</label>
           <label class="check inline" data-tip="Show each file's last-modified date in the tree."><input type="checkbox" id="show-modified" checked /> Modified</label>
           <label class="check inline" data-tip="Show folders skipped by the exclude rules (greyed out)."><input type="checkbox" id="show-excluded" checked /> Excluded dirs</label>
           <button id="expand-all" class="ghost" data-tip="Open every folder in the tree.">Expand all</button>
@@ -103,6 +104,7 @@
           <div id="tree-head" class="tree-head" hidden>
             <span class="th-name">Name</span>
             <span class="th-meta th-size">Size</span>
+            <span class="th-meta th-created">Created</span>
             <span class="th-meta th-modified">Modified</span>
           </div>
           <p class="empty">Pick a folder and run the tools to see your project structure here.</p>

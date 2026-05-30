@@ -422,6 +422,11 @@
     sizeMeta.textContent = meta.size || "";
     row.appendChild(sizeMeta);
 
+    const createdMeta = document.createElement("span");
+    createdMeta.className = "meta meta-created";
+    createdMeta.textContent = meta.created || "";
+    row.appendChild(createdMeta);
+
     const modMeta = document.createElement("span");
     modMeta.className = "meta meta-modified";
     modMeta.textContent = meta.modified || "";
@@ -439,7 +444,7 @@
     const { row, twisty } = makeRow(
       name,
       true,
-      { size: counts.files + " files", modified: "" },
+      { size: counts.files + " files", created: "", modified: "" },
       depth,
       { excluded: isExcluded }
     );
@@ -462,7 +467,7 @@
         const { row: fileRow } = makeRow(
           file.name,
           false,
-          { size: humanSize(file.size), modified: file.modified || "" },
+          { size: humanSize(file.size), created: file.created || "", modified: file.modified || "" },
           depth + 1
         );
         children.appendChild(fileRow);
@@ -535,12 +540,16 @@
 
   function applyColumnVisibility() {
     const showSize = document.getElementById("show-size").checked;
+    const showCreated = document.getElementById("show-created").checked;
     const showMod = document.getElementById("show-modified").checked;
     treeEl.querySelectorAll(".meta-size").forEach((e) => (e.style.display = showSize ? "" : "none"));
+    treeEl.querySelectorAll(".meta-created").forEach((e) => (e.style.display = showCreated ? "" : "none"));
     treeEl.querySelectorAll(".meta-modified").forEach((e) => (e.style.display = showMod ? "" : "none"));
     const thSize = document.querySelector(".th-size");
+    const thCreated = document.querySelector(".th-created");
     const thMod = document.querySelector(".th-modified");
     if (thSize) thSize.style.display = showSize ? "" : "none";
+    if (thCreated) thCreated.style.display = showCreated ? "" : "none";
     if (thMod) thMod.style.display = showMod ? "" : "none";
   }
 
@@ -586,6 +595,7 @@
       let line = asciiPrefix(ancestors.concat(isLast)) + file.name;
       const extra = [];
       if (opts.showSize) extra.push(humanSize(file.size));
+      if (opts.showCreated && file.created) extra.push(file.created);
       if (opts.showModified && file.modified) extra.push(file.modified);
       if (extra.length) line += "  (" + extra.join(", ") + ")";
       lines.push(line);
@@ -653,6 +663,10 @@
     applyColumnVisibility();
     saveSettings();
   });
+  document.getElementById("show-created").addEventListener("change", () => {
+    applyColumnVisibility();
+    saveSettings();
+  });
   document.getElementById("show-modified").addEventListener("change", () => {
     applyColumnVisibility();
     saveSettings();
@@ -679,6 +693,7 @@
     const lines = [];
     const opts = {
       showSize: document.getElementById("show-size").checked,
+      showCreated: document.getElementById("show-created").checked,
       showModified: document.getElementById("show-modified").checked,
     };
     buildAscii(rootName, currentStructure[rootName], [], lines, opts);
@@ -987,6 +1002,7 @@
       corsProxy: corsProxyEl.value,
       gitUrl: gitUrlEl.value,
       showSize: document.getElementById("show-size").checked,
+      showCreated: document.getElementById("show-created").checked,
       showModified: document.getElementById("show-modified").checked,
       showExcluded: showExcludedEl.checked,
       typeFilter: typeFilter.value,
@@ -1020,6 +1036,7 @@
     setChecked("run-loader", s.runLoader);
     setChecked("use-defaults", s.useDefaults);
     setChecked("show-size", s.showSize);
+    setChecked("show-created", s.showCreated);
     setChecked("show-modified", s.showModified);
     setChecked("show-excluded", s.showExcluded);
     if (typeof s.excludeDirs === "string")
