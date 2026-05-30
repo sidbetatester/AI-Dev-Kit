@@ -66,55 +66,52 @@ It ships as **three interfaces over the same core tools**: the **desktop app** (
 
 ## Installation
 
-### Standard (pip/venv workflow)
+This project is managed with [Astral's `uv`](https://github.com/astral-sh/uv).
+`pyproject.toml` is the single source of truth for dependencies and `uv.lock` pins
+exact, reproducible versions. The recommended workflow uses `uv`; a `pip` fallback is
+provided for environments where `uv` is unavailable.
 
-1. **Clone the Repository**:
+### Recommended: `uv`
+
+1. **Install uv** (once) — see the [official instructions](https://docs.astral.sh/uv/getting-started/installation/), or:
+   ```bash
+   pip install uv
+   ```
+
+2. **Clone the repository**:
    ```bash
    git clone https://github.com/sidbetatester/AI-Dev-Kit.git
    cd AI-Dev-Kit
    ```
 
-2. **Ensure Python 3.9+** is installed:
+3. **Sync dependencies** (creates an isolated, locked environment in `.venv`):
    ```bash
-   python --version
+   uv sync                 # desktop + web app
+   uv sync --extra mcp     # also include the MCP server (Python 3.10+)
    ```
 
-3. **Install Tkinter** (Linux users only):
+4. **Run any interface** through uv (no need to activate the environment):
    ```bash
-   sudo apt-get install python3-tk
+   uv run python tool_runner_ui.py     # desktop app (needs Tkinter + a display)
+   uv run python webapp/app.py         # web app  → http://localhost:5000
+   uv run python mcp_server.py --root /path/to/project   # MCP server
    ```
 
-4. **Optional: Create a Virtual Environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # For Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+> Linux desktop users also need Tkinter from the system package manager:
+> `sudo apt-get install python3-tk`.
 
-5. **Run the Application**:
-   ```bash
-   python tool_runner_ui.py
-   ```
+### Fallback: `pip`
 
-### Using `uv` (optional, side-by-side with pip)
+The `requirements*.txt` files are kept in sync with `pyproject.toml` for pip users.
 
-If you prefer Astral's [`uv`](https://github.com/astral-sh/uv) workflow, the repo now includes a `pyproject.toml` so you can manage dependencies without touching the existing `requirements.txt` flow.
-
-1. **Install uv** (once):
-   ```bash
-   pip install uv
-   # or follow the official install instructions for your platform
-   ```
-2. **Sync dependencies** (creates an isolated environment managed by uv):
-   ```bash
-   uv sync
-   ```
-3. **Run the UI through uv**:
-   ```bash
-   uv run python tool_runner_ui.py
-   ```
-
-Both approaches are supported; choose whichever matches your tooling preference.
+```bash
+python -m venv venv
+source venv/bin/activate            # Windows: venv\Scripts\activate
+pip install -r requirements.txt     # desktop + web app
+# optional MCP server (Python 3.10+):
+pip install -r requirements.txt -r requirements-mcp.txt
+python tool_runner_ui.py
+```
 
 ---
 
@@ -245,18 +242,19 @@ export, snapshot save/load, persistent settings, a progress bar, and a cancel bu
 
 ### Running the Web App
 
-Install dependencies and start the static host (any platform):
+Sync dependencies and start the static host (any platform):
 
 ```bash
-pip install -r requirements.txt
-python webapp/app.py
+uv sync
+uv run python webapp/app.py
+# pip fallback: pip install -r requirements.txt && python webapp/app.py
 ```
 
 Then open <http://localhost:5000> in your browser. The host and port honor the `HOST` and
 `PORT` environment variables and default to `0.0.0.0:5000`:
 
 ```bash
-HOST=127.0.0.1 PORT=8080 python webapp/app.py
+HOST=127.0.0.1 PORT=8080 uv run python webapp/app.py
 ```
 
 ### Source Modes
@@ -304,14 +302,13 @@ web apps, so the results are identical.
 <a id="mcp-installation"></a>
 ### Installation
 
-The MCP server requires **Python 3.10+** (for the `mcp` SDK) and an extra dependency
-file. The core tools themselves still run on Python 3.9+.
+The MCP server requires **Python 3.10+** (for the `mcp` SDK), pulled in via the optional
+`mcp` extra. The core tools themselves still run on Python 3.9+.
 
 ```bash
-pip install -r requirements.txt -r requirements-mcp.txt
+uv sync --extra mcp
+# pip fallback: pip install -r requirements.txt -r requirements-mcp.txt
 ```
-
-> Using `uv`? Install the optional `mcp` extra instead: `uv sync --extra mcp`.
 
 ### Running the Server
 
@@ -320,18 +317,18 @@ Point the server at one or more directories it is allowed to read with `--root`
 it for you (see the next section) — but you can run it directly to verify it starts:
 
 ```bash
-python mcp_server.py --root /path/to/your/project
+uv run python mcp_server.py --root /path/to/your/project
 ```
 
 Alternatively, set the allowed roots via an environment variable:
 
 ```bash
-TOOLS_MCP_ALLOWED_ROOTS=/path/to/project python mcp_server.py
+TOOLS_MCP_ALLOWED_ROOTS=/path/to/project uv run python mcp_server.py
 ```
 
 Useful optional flags: `--exclude NAME` (extra directory name to skip, repeatable),
 `--max-files`, `--max-total-bytes`, `--max-file-bytes`, and `--max-depth` to tune the
-safety caps. Run `python mcp_server.py --help` for the full list.
+safety caps. Run `uv run python mcp_server.py --help` for the full list.
 
 ### Connecting an AI Client
 
@@ -357,6 +354,10 @@ Use **absolute paths** for both `mcp_server.py` and each `--root`. Restart the c
 and the tools below will appear automatically. Other MCP-capable clients (Cursor,
 Windsurf, VS Code agents, etc.) use the same `command` / `args` shape in their own
 config location.
+
+> **Using uv?** Point the client at uv so it runs inside the locked environment —
+> set `"command": "uv"` with `"args": ["run", "python", "mcp_server.py", "--root", "/absolute/path/to/your/project"]`
+> and add `"cwd": "/absolute/path/to/AI-Dev-Kit"` so uv finds the project.
 
 ### Available Tools
 

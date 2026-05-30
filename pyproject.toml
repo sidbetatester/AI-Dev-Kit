@@ -4,15 +4,22 @@ version = "0.1.0"
 description = "Tkinter app to concatenate project files and visualize directory structures."
 readme = "Readme.md"
 requires-python = ">=3.9"
+# Single source of truth for runtime dependencies. Covers the desktop app
+# (Tkinter UI + token_encryption) and the privacy-first web app (Flask static
+# host served by gunicorn). The requirements*.txt files are kept in sync as a
+# pip fallback. The MCP server's dependency is an optional extra below.
 dependencies = [
     "humanize>=4.9.0",
+    "cryptography>=41.0.0",
+    "flask>=3.0.0",
+    "gunicorn>=21.0.0",
 ]
 
 [project.optional-dependencies]
 # Local, read-only MCP server that exposes the core tools to an AI agent.
-# Optional so the core/desktop/web installs stay lean.
+# Optional so the core/desktop/web installs stay lean. Requires Python >= 3.10.
 mcp = [
-    "mcp>=1.27.2",
+    "mcp>=1.27.2 ; python_version >= '3.10'",
 ]
 
 [build-system]
