@@ -231,6 +231,9 @@ class ToolRunnerUI(tk.Tk):
         # Active excludes set used both for tooling and tree filtering
         self.active_excludes: set[str] = set(DEFAULT_EXCLUDE_DIRS)
 
+        # Map tree item IDs to their absolute file paths for context menu
+        self._tree_item_paths: Dict[str, str] = {}
+
         # Configure TTK styles for various colored buttons
         style = ttk.Style(self)
         # self._apply_consistent_theme(style)
@@ -245,34 +248,68 @@ class ToolRunnerUI(tk.Tk):
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # 1) Directory selection
-        ttk.Label(self.main_frame, text="Project Root:").grid(row=0, column=0, sticky=tk.W)
-        self.dir_entry = ttk.Entry(self.main_frame, width=50)
-        self.dir_entry.grid(row=0, column=1, sticky=tk.EW)
-        btn_root = ttk.Button(self.main_frame, text="Browse...", command=self.select_directory, width=13)
-        btn_root.grid(row=0, column=2)
+        # 0) Input Mode Selection (Local vs Remote Git)
+        self.input_mode = tk.StringVar(value="local")
+        ttk.Label(self.main_frame, text="Input Mode:").grid(row=0, column=0, sticky=tk.W)
+        mode_frame = ttk.Frame(self.main_frame)
+        mode_frame.grid(row=0, column=1, sticky=tk.W, columnspan=2)
+        
+        rb_local = ttk.Radiobutton(
+            mode_frame, 
+            text="Local Folder", 
+            variable=self.input_mode,
+            value="local",
+            command=self._on_mode_change
+        )
+        rb_local.pack(side=tk.LEFT, padx=5)
+        
+        rb_remote = ttk.Radiobutton(
+            mode_frame,
+            text="Git Repository",
+            variable=self.input_mode,
+            value="remote",
+            command=self._on_mode_change
+        )
+        rb_remote.pack(side=tk.LEFT, padx=5)
+        
+        create_tooltip(rb_local, "Scan a local project folder")
+        create_tooltip(rb_remote, "Clone and scan a remote Git repository (GitHub/GitLab)")
+
+        # 1) Directory selection / Git URL (toggles based on mode)
+        ttk.Label(self.main_frame, text="Project Root:", name="local_label").grid(row=1, column=0, sticky=tk.W)
+        self.dir_entry = ttk.Entry(self.main_frame, width=50, name="local_entry")
+        self.dir_entry.grid(row=1, column=1, sticky=tk.EW)
+        self.btn_root = ttk.Button(self.main_frame, text="Browse...", command=self.select_directory, width=13, name="local_browse")
+        self.btn_root.grid(row=1, column=2)
 
         create_tooltip(self.dir_entry, "Path to your top-level project folder.")
-        create_tooltip(btn_root, "Select the project root directory.")
+        create_tooltip(self.btn_root, "Select the project root directory.")
+        
+        # Git URL field (initially hidden)
+        self.git_url_label = ttk.Label(self.main_frame, text="Git URL:", name="git_label")
+        self.git_url_entry = ttk.Entry(self.main_frame, width=50, name="git_entry")
+        
+        create_tooltip(self.git_url_entry, "Enter repository URL (e.g., https://github.com/user/repo)")
 
-        ttk.Label(self.main_frame, text="Output Directory:").grid(row=1, column=0, sticky=tk.W)
+        # 2) Output Directory
+        ttk.Label(self.main_frame, text="Output Directory:").grid(row=2, column=0, sticky=tk.W)
         self.output_dir_entry = ttk.Entry(self.main_frame, width=50)
-        self.output_dir_entry.grid(row=1, column=1, sticky=tk.EW)
+        self.output_dir_entry.grid(row=2, column=1, sticky=tk.EW)
         self.output_dir_entry.insert(0, "Tools_Outputs")
         btn_out = ttk.Button(self.main_frame, text="Browse...", command=self.select_output_dir, width=13)
-        btn_out.grid(row=1, column=2)
+        btn_out.grid(row=2, column=2)
 
         create_tooltip(self.output_dir_entry, "Where logs, concatenated files, and JSON structures go.")
         create_tooltip(btn_out, "Select the output directory.")
 
-        # 2) Tool selection
+        # 3) Tool selection
         self.tool_vars = {
             'file_loader': tk.BooleanVar(value=True),
             'project_structure': tk.BooleanVar(value=True)
         }
-        ttk.Label(self.main_frame, text="Select Tools:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Select Tools:").grid(row=3, column=0, sticky=tk.W)
         tools_frame = ttk.Frame(self.main_frame)
-        tools_frame.grid(row=2, column=1, sticky=tk.W)
+        tools_frame.grid(row=3, column=1, sticky=tk.W)
 
         chk_loader = ttk.Checkbutton(tools_frame, text="File Loader", variable=self.tool_vars['file_loader'])
         chk_struct = ttk.Checkbutton(tools_frame, text="Project Structure", variable=self.tool_vars['project_structure'])
@@ -283,11 +320,11 @@ class ToolRunnerUI(tk.Tk):
         create_tooltip(chk_struct, "Generate & display a JSON project structure in an ASCII tree.")
 
         # Default exclude rules
-        ttk.Label(self.main_frame, text="Excludes:").grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Excludes:").grid(row=4, column=0, sticky=tk.W)
         # Default exclude rules visibility/toggle
         self.use_default_excludes = tk.BooleanVar(value=True)
         excludes_frame = ttk.Frame(self.main_frame)
-        excludes_frame.grid(row=3, column=1, sticky=tk.EW)
+        excludes_frame.grid(row=4, column=1, sticky=tk.EW)
         excludes_frame.columnconfigure(1, weight=1)
 
         chk_default_ex = ttk.Checkbutton(
@@ -329,6 +366,16 @@ class ToolRunnerUI(tk.Tk):
         )
         btn_clear.pack(anchor="e", pady=(0,5))
         create_tooltip(btn_clear, "Clears the console output area.")
+
+        btn_reset = ttk.Button(
+            action_buttons_frame,
+            text="Reset Settings",
+            command=self.reset_settings,
+            width=13,
+            style="Clear.TButton"
+        )
+        btn_reset.pack(anchor="e", pady=(0,5))
+        create_tooltip(btn_reset, "Reset project paths, tool selection, columns, and excludes to defaults.")
 
         btn_hide_tree = ttk.Button(
             action_buttons_frame,
@@ -581,6 +628,10 @@ class ToolRunnerUI(tk.Tk):
         self.tree_frame.columnconfigure(0, weight=1)
         self.tree_frame.rowconfigure(0, weight=1)
 
+        # Context menu for tree items
+        self._create_context_menu()
+        self.tree.bind("<Button-3>", self._on_tree_right_click)
+
         # Initially show all columns
         self.update_displaycolumns()
 
@@ -614,6 +665,30 @@ class ToolRunnerUI(tk.Tk):
         """
         sys.stdout = self.original_stdout
 
+    def _on_mode_change(self) -> None:
+        """Toggle UI elements based on selected input mode (local vs remote)."""
+        mode = self.input_mode.get()
+        
+        if mode == "local":
+            # Show local folder fields
+            self.main_frame.nametowidget("local_label").grid(row=1, column=0, sticky=tk.W)
+            self.main_frame.nametowidget("local_entry").grid(row=1, column=1, sticky=tk.EW)
+            self.main_frame.nametowidget("local_browse").grid(row=1, column=2)
+            
+            # Hide Git URL fields
+            self.git_url_label.grid_forget()
+            self.git_url_entry.grid_forget()
+            
+        else:  # mode == "remote"
+            # Hide local folder fields
+            self.main_frame.nametowidget("local_label").grid_forget()
+            self.main_frame.nametowidget("local_entry").grid_forget()
+            self.main_frame.nametowidget("local_browse").grid_forget()
+            
+            # Show Git URL fields
+            self.git_url_label.grid(row=1, column=0, sticky=tk.W)
+            self.git_url_entry.grid(row=1, column=1, sticky=tk.EW, columnspan=2)
+
 
     ################################################
     # Show/Hide Columns
@@ -641,9 +716,8 @@ class ToolRunnerUI(tk.Tk):
 
     def _load_settings(self) -> None:
         """
-        Load persisted UI settings (currently the excludes checkbox/text)
-        from SETTINGS_FILE, if it exists. Best-effort; errors are logged
-        but do not prevent the app from starting.
+        Load persisted UI settings from SETTINGS_FILE, if it exists.
+        Best-effort; errors are logged but do not prevent the app from starting.
         """
         try:
             if not os.path.isfile(SETTINGS_FILE):
@@ -654,7 +728,7 @@ class ToolRunnerUI(tk.Tk):
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Restore checkbox
+            # Restore excludes checkbox
             self.use_default_excludes.set(data.get("use_default_excludes", True))
 
             # Restore entry text (fall back to defaults if missing)
@@ -665,6 +739,42 @@ class ToolRunnerUI(tk.Tk):
 
             # Apply enabled/disabled state based on checkbox
             self._on_toggle_default_excludes()
+
+            # Restore project root, if present
+            project_root = data.get("project_root")
+            if project_root:
+                self.dir_entry.delete(0, tk.END)
+                self.dir_entry.insert(0, project_root)
+
+            # Restore output directory, if present
+            output_dir = data.get("output_dir")
+            if output_dir:
+                self.output_dir_entry.delete(0, tk.END)
+                self.output_dir_entry.insert(0, output_dir)
+
+            # Restore selected tools (File Loader / Project Structure)
+            tools = data.get("tools", {})
+            if "file_loader" in tools:
+                self.tool_vars["file_loader"].set(bool(tools.get("file_loader", True)))
+            if "project_structure" in tools:
+                self.tool_vars["project_structure"].set(bool(tools.get("project_structure", True)))
+
+            # Restore visible columns
+            columns = data.get("columns", {})
+            if columns:
+                self.col_vars["size"].set(bool(columns.get("size", True)))
+                self.col_vars["created"].set(bool(columns.get("created", True)))
+                self.col_vars["modified"].set(bool(columns.get("modified", True)))
+                self.update_displaycolumns()
+
+            # Restore window geometry (if valid)
+            geometry = data.get("window_geometry")
+            if geometry:
+                try:
+                    self.geometry(geometry)
+                except Exception:
+                    # Ignore invalid geometry values
+                    pass
         except Exception as e:
             # Attempt to log, but never crash initialization
             try:
@@ -694,22 +804,89 @@ class ToolRunnerUI(tk.Tk):
     def _save_settings(self) -> None:
         """
         Persist key UI settings to SETTINGS_FILE so that they survive restarts.
-        Currently persists the excludes checkbox state and text entry.
         """
         try:
             excludes_text = self._get_excludes_text()
             if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
                 excludes_text = self.excludes_entry.get()
 
+            # Core path and tool selections
+            project_root = self.dir_entry.get()
+            output_dir = self.output_dir_entry.get()
+
+            tools = {
+                "file_loader": bool(self.tool_vars["file_loader"].get()),
+                "project_structure": bool(self.tool_vars["project_structure"].get()),
+            }
+
+            columns = {
+                "size": bool(self.col_vars["size"].get()),
+                "created": bool(self.col_vars["created"].get()),
+                "modified": bool(self.col_vars["modified"].get()),
+            }
+
             data = {
                 "use_default_excludes": bool(self.use_default_excludes.get()),
                 "excludes_text": excludes_text,
+                "project_root": project_root,
+                "output_dir": output_dir,
+                "tools": tools,
+                "columns": columns,
+                "window_geometry": self.geometry(),
             }
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             # Log but do not raise; closing the app should still succeed
             self._append_log_line("WARNING", f"Failed to save settings: {e}")
+
+    def reset_settings(self) -> None:
+        """
+        Reset key UI settings back to their defaults and remove any
+        persisted settings file. Best-effort; failures are logged.
+        """
+        try:
+            # Project root and output directory
+            self.dir_entry.delete(0, tk.END)
+            self.output_dir_entry.delete(0, tk.END)
+            self.output_dir_entry.insert(0, "Tools_Outputs")
+
+            # Tool selections
+            self.tool_vars["file_loader"].set(True)
+            self.tool_vars["project_structure"].set(True)
+
+            # Column visibility
+            self.col_vars["size"].set(True)
+            self.col_vars["created"].set(True)
+            self.col_vars["modified"].set(True)
+            self.update_displaycolumns()
+
+            # Excludes: reset to defaults and ensure enabled
+            self.use_default_excludes.set(True)
+            default_excludes = self._get_excludes_text()
+            if hasattr(self, "excludes_entry") and self.excludes_entry is not None:
+                self.excludes_entry.configure(state="normal")
+                self.excludes_entry.delete(0, tk.END)
+                self.excludes_entry.insert(0, default_excludes)
+            self._on_toggle_default_excludes()
+
+            # Optionally reset window size (do not force position)
+            try:
+                self.geometry("900x600")
+            except Exception:
+                pass
+
+            # Remove settings file so next start is clean
+            try:
+                if os.path.isfile(SETTINGS_FILE):
+                    os.remove(SETTINGS_FILE)
+            except Exception as exc:
+                self._append_log_line("WARNING", f"Failed to delete settings file: {exc}")
+
+            # Persist the freshly reset settings
+            self._save_settings()
+        except Exception as e:
+            self._append_log_line("WARNING", f"Failed to reset settings: {e}")
 
     ################################################
     # Two-click "Collapse All" logic
@@ -823,7 +1000,56 @@ class ToolRunnerUI(tk.Tk):
         if self.running:
             return
 
-        project_root = self.dir_entry.get().strip()
+        mode = self.input_mode.get()
+        
+        # Handle Git repository mode
+        if mode == "remote":
+            git_url = self.git_url_entry.get().strip()
+            if not git_url:
+                self._append_log_line("ERROR", "Please enter a Git repository URL")
+                return
+            
+            # Import Git tool
+            try:
+                from git_remote_tool import GitRemoteTool
+            except ImportError:
+                self._append_log_line("ERROR", "git_remote_tool.py not found")
+                return
+            
+            # Check if git is installed
+            git_tool = GitRemoteTool(logger=lambda msg: self._append_log_line("INFO", msg))
+            if not git_tool.check_git_installed():
+                messagebox.showerror(
+                    "Git Not Found",
+                    "Git is not installed on your system.\n\n"
+                    "Please install Git from: https://git-scm.com/downloads"
+                )
+                return
+            
+            # Clone repository
+            self._append_log_line("INFO", f"Cloning repository: {git_url}")
+            
+            # Get token from settings (if set)
+            # TODO: Implement token storage/retrieval
+            token = None  # For now, only support public repos
+            
+            success, temp_path, error = git_tool.clone_repository(git_url, token)
+            
+            if not success:
+                self._append_log_line("ERROR", f"Failed to clone repository: {error}")
+                return
+            
+            # Use the cloned directory as project_root
+            project_root = temp_path
+            self._append_log_line("INFO", f"Repository cloned to: {project_root}")
+            
+            # Store temp path for cleanup later
+            self._git_temp_path = temp_path
+            
+        else:  # local mode
+            project_root = self.dir_entry.get().strip()
+            self._git_temp_path = None  # No cleanup needed
+
         output_dir = self.output_dir_entry.get().strip()
 
         if not project_root or not os.path.isdir(project_root):
@@ -974,6 +1200,34 @@ class ToolRunnerUI(tk.Tk):
         self.status_label.config(text="Ready")
         self.btn_run.config(state=tk.NORMAL)
         self.cancel_btn.config(state=tk.DISABLED)
+        
+        # Clean up Git clone if present
+        if hasattr(self, '_git_temp_path') and self._git_temp_path:
+            temp_path = self._git_temp_path
+            self._append_log_line("INFO", f"Cleaning up temporary clone directory: {temp_path}")
+            try:
+                import shutil
+                import stat
+                
+                def handle_remove_readonly(func, path, exc):
+                    """Error handler for Windows read-only files."""
+                    if os.name == 'nt':
+                        # Remove read-only attribute and try again
+                        os.chmod(path, stat.S_IWRITE)
+                        func(path)
+                    else:
+                        raise
+                
+                if os.path.exists(temp_path):
+                    shutil.rmtree(temp_path, onerror=handle_remove_readonly)
+                    self._append_log_line("INFO", f"Successfully deleted: {temp_path}")
+                else:
+                    self._append_log_line("WARNING", f"Temp directory not found: {temp_path}")
+                self._git_temp_path = None
+            except Exception as e:
+                self._append_log_line("ERROR", f"Failed to cleanup temp directory: {str(e)}")
+                self._append_log_line("WARNING", f"Please manually delete: {temp_path}")
+        
         # Best-effort worker cleanup
         try:
             if self.worker_thread is not None and self.worker_thread.is_alive():
@@ -1081,6 +1335,136 @@ class ToolRunnerUI(tk.Tk):
         self._append_log_line("INFO", "Logs copied to clipboard.")
 
     ################################################
+    # Context Menu for Tree
+    ################################################
+    def _create_context_menu(self) -> None:
+        """Create the right-click context menu for tree items."""
+        self.tree_context_menu = tk.Menu(self, tearoff=0)
+        self.tree_context_menu.add_command(label="Open File", command=self._on_context_open_file)
+        self.tree_context_menu.add_command(label="Open in Explorer", command=self._on_context_open_folder)
+        self.tree_context_menu.add_separator()
+        self.tree_context_menu.add_command(label="Copy Path", command=self._on_context_copy_path)
+
+    def _on_tree_right_click(self, event: tk.Event) -> None:
+        """Handle right-click on tree item to show context menu."""
+        # Identify the item under the cursor
+        item_id = self.tree.identify_row(event.y)
+        if not item_id:
+            return  # Clicked on empty space
+        
+        # Select the item
+        self.tree.selection_set(item_id)
+        self.tree.focus(item_id)
+        
+        # Show context menu at cursor position
+        try:
+            self.tree_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.tree_context_menu.grab_release()
+
+    def _on_context_open_file(self) -> None:
+        """Open the selected file in the default application."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        tags = self.tree.item(item_id, 'tags')
+        
+        # Only open if it's a file
+        if 'file' not in tags:
+            messagebox.showwarning("Open File", "Please select a file to open.")
+            return
+        
+        file_path = self._tree_item_paths.get(item_id)
+        if not file_path or not os.path.isfile(file_path):
+            messagebox.showerror("Open File", "File path not found or file does not exist.")
+            return
+        
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(file_path)
+            elif sys.platform == 'darwin':  # macOS
+                import subprocess
+                subprocess.run(['open', file_path], check=False)
+            else:  # Linux and others
+                import subprocess
+                subprocess.run(['xdg-open', file_path], check=False)
+            self._append_log_line("INFO", f"Opened file: {file_path}")
+        except Exception as e:
+            messagebox.showerror("Open File", f"Failed to open file:\n{str(e)}")
+            self._append_log_line("ERROR", f"Failed to open file {file_path}: {str(e)}")
+
+    def _on_context_open_folder(self) -> None:
+        """Open the folder containing the selected item in file explorer."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        item_path = self._tree_item_paths.get(item_id)
+        
+        if not item_path:
+            messagebox.showerror("Open Folder", "Path not found.")
+            return
+        
+        # If it's a file, get the parent directory
+        if os.path.isfile(item_path):
+            folder_path = os.path.dirname(item_path)
+        else:
+            folder_path = item_path
+        
+        if not os.path.isdir(folder_path):
+            messagebox.showerror("Open Folder", "Folder does not exist.")
+            return
+        
+        try:
+            if os.name == 'nt':  # Windows
+                # Normalize paths to use Windows backslashes
+                item_path_normalized = os.path.normpath(item_path)
+                folder_path_normalized = os.path.normpath(folder_path)
+                
+                # Debug: log the path being used
+                self._append_log_line("INFO", f"Opening in explorer - item_path: {item_path_normalized}, folder_path: {folder_path_normalized}")
+                
+                # If it's a file, use /select to open folder and highlight the file
+                if os.path.isfile(item_path):
+                    cmd = f'explorer /select,"{item_path_normalized}"'
+                    self._append_log_line("INFO", f"Running command: {cmd}")
+                    os.system(cmd)
+                else:
+                    # For folders, use os.startfile to open them
+                    self._append_log_line("INFO", f"Opening folder with startfile: {folder_path_normalized}")
+                    os.startfile(folder_path_normalized)
+            elif sys.platform == 'darwin':  # macOS
+                import subprocess
+                subprocess.run(['open', folder_path], check=False)
+            else:  # Linux and others
+                import subprocess
+                subprocess.run(['xdg-open', folder_path], check=False)
+            self._append_log_line("INFO", f"Opened folder: {folder_path}")
+        except Exception as e:
+            messagebox.showerror("Open Folder", f"Failed to open folder:\n{str(e)}")
+            self._append_log_line("ERROR", f"Failed to open folder {folder_path}: {str(e)}")
+
+    def _on_context_copy_path(self) -> None:
+        """Copy the absolute path of the selected item to clipboard."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item_id = selection[0]
+        item_path = self._tree_item_paths.get(item_id)
+        
+        if not item_path:
+            messagebox.showwarning("Copy Path", "Path not available.")
+            return
+        
+        self.clipboard_clear()
+        self.clipboard_append(item_path)
+        self._append_log_line("INFO", f"Copied path to clipboard: {item_path}")
+
+    ################################################
     # Build & Display ASCII Tree (with real root name + folder file counts)
     ################################################
     def load_and_display_structure(self, json_file: str) -> None:
@@ -1098,17 +1482,27 @@ class ToolRunnerUI(tk.Tk):
 
             # Clear old tree first
             self.tree.delete(*self.tree.get_children())
+            # Clear path mapping
+            self._tree_item_paths.clear()
+
+            # Get project root for building absolute paths
+            project_root = self.dir_entry.get().strip()
+            if not project_root or not os.path.isdir(project_root):
+                self._append_log_line("WARNING", "Project root not set; paths will not be available for context menu.")
+                project_root = ""
 
             # If there's exactly one top-level key, treat that as the root folder
             top_keys = sorted(structure.keys())
             if len(top_keys) == 1:
                 root_name = top_keys[0]
                 root_data = structure[root_name]
-                self._build_tree_ascii("", root_data, [], root_name)
+                # Use project_root directly since it already points to the root folder
+                self._build_tree_ascii("", root_data, [], root_name, project_root)
             else:
                 # multiple top-level folders
                 for key in top_keys:
-                    self._build_tree_ascii("", structure[key], [], key)
+                    key_path = os.path.join(project_root, key) if project_root else key
+                    self._build_tree_ascii("", structure[key], [], key, key_path)
 
             self._append_log_line("INFO", "Project structure loaded in UI")
 
@@ -1124,7 +1518,8 @@ class ToolRunnerUI(tk.Tk):
         parent_node: str,
         data: Dict[str, Any],
         ancestors: List[bool],
-        folder_name: str
+        folder_name: str,
+        current_path: str = ""
     ) -> None:
         """
         Insert exactly one node for 'folder_name', then recursively
@@ -1158,6 +1553,10 @@ class ToolRunnerUI(tk.Tk):
             tags=('folder',),
             open=False
         )
+        
+        # Store folder path for context menu
+        if current_path:
+            self._tree_item_paths[folder_id] = current_path
 
         # Extract subfolders, files
         subfolders: Dict[str, Any] = data.get("subfolders", {})
@@ -1195,11 +1594,13 @@ class ToolRunnerUI(tk.Tk):
 
             if kind == "folder":
                 # Recursively call _build_tree_ascii for the subfolder
+                subfolder_path = os.path.join(current_path, str(child)) if current_path else ""
                 self._build_tree_ascii(
                     parent_node=folder_id,
                     data=subdata,
                     ancestors=ancestors + [is_last_child],
-                    folder_name=str(child)
+                    folder_name=str(child),
+                    current_path=subfolder_path
                 )
 
             elif kind == "fileobj":
@@ -1223,13 +1624,18 @@ class ToolRunnerUI(tk.Tk):
                 created_str = fcreated or ""
                 mod_str = fmod or ""
 
-                self.tree.insert(
+                file_id = self.tree.insert(
                     folder_id,
                     "end",
                     text=file_text,
                     values=(size_str, created_str, mod_str),
                     tags=('file',)
                 )
+                
+                # Store file path for context menu
+                if current_path:
+                    file_path = os.path.join(current_path, fname)
+                    self._tree_item_paths[file_id] = file_path
 
             else:
                 # Plain string for a file
@@ -1243,13 +1649,18 @@ class ToolRunnerUI(tk.Tk):
                 ascii_child_prefix = "".join(child_prefix_parts)
 
                 fname_str = f"{ascii_child_prefix}{child}"
-                self.tree.insert(
+                file_id = self.tree.insert(
                     folder_id,
                     "end",
                     text=fname_str,
                     values=("", "", ""),
                     tags=('file',)
                 )
+                
+                # Store file path for context menu  
+                if current_path:
+                    file_path = os.path.join(current_path, str(child))
+                    self._tree_item_paths[file_id] = file_path
 
     def _should_show_dir(self, dirname: str) -> bool:
         """
@@ -1289,14 +1700,23 @@ class ToolRunnerUI(tk.Tk):
                 with open(path, 'r', encoding='utf-8') as f:
                     structure: Dict[str, Any] = json.load(f)
                 self.tree.delete(*self.tree.get_children())
+                # Clear path mapping
+                self._tree_item_paths.clear()
+                
+                # Get project root for building absolute paths
+                project_root = self.dir_entry.get().strip()
+                if not project_root or not os.path.isdir(project_root):
+                    project_root = ""
 
                 top_keys = sorted(structure.keys())
                 if len(top_keys) == 1:
                     root_name = top_keys[0]
-                    self._build_tree_ascii("", structure[root_name], [], root_name)
+                    # Use project_root directly since it already points to the root folder
+                    self._build_tree_ascii("", structure[root_name], [], root_name, project_root)
                 else:
                     for key in top_keys:
-                        self._build_tree_ascii("", structure[key], [], key)
+                        key_path = os.path.join(project_root, key) if project_root else key
+                        self._build_tree_ascii("", structure[key], [], key, key_path)
             except Exception as e:
                 self._append_log_line("ERROR", f"Error refreshing tree: {str(e)}")
 
@@ -1749,4 +2169,10 @@ class ToolRunnerUI(tk.Tk):
 ################################################
 if __name__ == "__main__":
     app = ToolRunnerUI()
+    
+    # Periodic check to allow Ctrl+C to be processed
+    def check_for_signals():
+        app.after(100, check_for_signals)
+    
+    app.after(100, check_for_signals)
     app.mainloop()
