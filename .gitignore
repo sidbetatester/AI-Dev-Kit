@@ -79,3 +79,5 @@ tool_runner_settings.json
 .local/
 .cache/
 .breakpoints
+
+scripts/post-merge.sh
