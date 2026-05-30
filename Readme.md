@@ -8,6 +8,8 @@
 
 This tool is perfect for organizing large codebases, generating documentation, and preparing projects for AI-assisted workflows.
 
+It ships as **three interfaces over the same core tools**: the **desktop app** (this Tkinter UI), a **privacy-first web app** that runs entirely in your browser ([details](#web-app-browser-privacy-first)), and a local, read-only **MCP server** for AI agents ([details](#mcp-server-ai-agent-access)).
+
 ---
 
 ## Table of Contents
@@ -21,6 +23,11 @@ This tool is perfect for organizing large codebases, generating documentation, a
   - [Settings and Controls](#settings-and-controls)
   - [Output Files](#output-files)
   - [Advanced Features](#advanced-features)
+- [Web App (Browser, Privacy-First)](#web-app-browser-privacy-first)
+  - [How It Works](#how-it-works)
+  - [Running the Web App](#running-the-web-app)
+  - [Source Modes](#source-modes)
+  - [Privacy Guarantees](#privacy-guarantees)
 - [MCP Server (AI Agent Access)](#mcp-server-ai-agent-access)
   - [What It Is](#what-it-is)
   - [Installation](#mcp-installation)
@@ -209,6 +216,66 @@ Monitor real-time updates:
 - File processing status.
 - Logs for excluded/skipped files.
 - Errors or warnings.
+
+---
+
+## Web App (Browser, Privacy-First)
+
+The `webapp/` directory provides a browser-based front end that runs the **exact same
+Python tools** as the desktop app — no install of Tkinter or a local display required.
+You open a page, pick a folder, and the analysis runs **entirely inside your browser
+tab**. No project files are ever uploaded to or stored on a server.
+
+### How It Works
+
+The web app runs the real `FileLoaderTool` and `ProjectStructureTool` in the browser via
+[Pyodide](https://pyodide.org) (CPython compiled to WebAssembly):
+
+- `webapp/app.py` is a **thin static host**. It serves the single-page UI and, via
+  `/core/<name>`, the unchanged core `.py` modules so the browser can load them into
+  Pyodide. It performs **no** file processing and never receives your files.
+- The browser builds an in-memory virtual filesystem from the folder you pick, runs the
+  tools inside Pyodide, and produces the same outputs (concatenated text, structure JSON)
+  as in-browser downloads. Because it uses the tools' own save logic, the output is
+  byte-for-byte identical to the desktop app.
+
+The UI mirrors the desktop feature set: an interactive structure tree, name search,
+file-type filter, column toggles (size / modified), show-excluded-dirs toggle, ASCII
+export, snapshot save/load, persistent settings, a progress bar, and a cancel button.
+
+### Running the Web App
+
+Install dependencies and start the static host (any platform):
+
+```bash
+pip install -r requirements.txt
+python webapp/app.py
+```
+
+Then open <http://localhost:5000> in your browser. The host and port honor the `HOST` and
+`PORT` environment variables and default to `0.0.0.0:5000`:
+
+```bash
+HOST=127.0.0.1 PORT=8080 python webapp/app.py
+```
+
+### Source Modes
+
+The web app can analyze a project from two sources:
+
+- **Local folder** — pick a folder on your computer. Files are read locally in the tab and
+  never leave your machine.
+- **Public Git URL** — clone a **public** repository **entirely client-side** over HTTPS.
+  No token or login is used (public repos only). Because browsers cannot speak the raw git
+  protocol, the fetch is relayed through a configurable **CORS proxy** (defaults to the
+  public `https://cors.isomorphic-git.org`, editable under "Advanced"). The clone lives in
+  an in-memory filesystem and is discarded when you leave the page.
+
+### Privacy Guarantees
+
+- Your local files are **never uploaded** — all processing happens in your browser tab.
+- The server is a static host only; it never reads, stores, or proxies your project files.
+- Outputs are generated in-browser as downloads, so they stay on your machine.
 
 ---
 
