@@ -26,6 +26,11 @@ It ships as **three interfaces over the same core tools**: the **desktop app** (
 - [Web App (Browser, Privacy-First)](#web-app-browser-privacy-first)
   - [How It Works](#how-it-works)
   - [Running the Web App](#running-the-web-app)
+  - [Web Interface Guide](#web-interface-guide)
+    - [Main Interface](#main-interface-web)
+    - [Project Tree View](#project-tree-view-web)
+    - [Toolbar Controls](#toolbar-controls-web)
+    - [Concatenated Files and Logs](#concatenated-files-and-logs-web)
   - [Source Modes](#source-modes)
   - [Privacy Guarantees](#privacy-guarantees)
 - [MCP Server (AI Agent Access)](#mcp-server-ai-agent-access)
@@ -237,8 +242,8 @@ The web app runs the real `FileLoaderTool` and `ProjectStructureTool` in the bro
   byte-for-byte identical to the desktop app.
 
 The UI mirrors the desktop feature set: an interactive structure tree, name search,
-file-type filter, column toggles (size / modified), show-excluded-dirs toggle, ASCII
-export, snapshot save/load, persistent settings, a progress bar, and a cancel button.
+file-type filter, column toggles (size / created / modified), show-excluded-dirs toggle,
+ASCII export, snapshot save/load, persistent settings, a progress bar, and a cancel button.
 
 ### Running the Web App
 
@@ -256,6 +261,73 @@ Then open <http://localhost:5000> in your browser. The host and port honor the `
 ```bash
 HOST=127.0.0.1 PORT=8080 uv run python webapp/app.py
 ```
+
+<a id="web-interface-guide"></a>
+### Web Interface Guide
+
+The browser UI mirrors the desktop feature set, organized into a left **control panel**
+and a right **results area** with three tabs: **Structure**, **Concatenated files**, and
+**Logs**.
+
+> **Note:** The screenshots in this section are placeholders. Capture your own from a
+> running web app (<http://localhost:5000>) and drop them into `images/` using the file
+> names referenced below to replace them.
+
+<a id="main-interface-web"></a>
+#### Main Interface
+
+![Web App — Main Interface](images/Screenshot_Web_1_Main.png)
+*Placeholder — the web app's landing screen showing the control panel.*
+
+The left control panel offers:
+- **Source selection**: choose **Local folder** (pick a folder on your machine) or
+  **Public Git URL** (clone a public repo client-side). See [Source Modes](#source-modes).
+- **Tool selection**: run **Project structure**, **File loader (concatenate)**, or both.
+- **Excludes configuration**: toggle the default excludes and edit the comma-separated
+  list of directory names to skip (e.g., `.git`, `venv`, `node_modules`).
+- **Run controls**: a **Run Tools** button, a **Cancel** button, and a progress bar for
+  long scans.
+
+<a id="project-tree-view-web"></a>
+#### Project Tree View
+
+![Web App — Project Tree View](images/Screenshot_Web_2_Tree.png)
+*Placeholder — the Structure tab with the populated, multi-column tree.*
+
+The **Structure** tab shows the same interactive tree as the desktop app:
+- Expandable folders with **file counts** for each directory.
+- Metadata columns for **size**, **created**, and **modified** timestamps.
+- **Sticky column headers** that stay visible while you scroll.
+
+<a id="toolbar-controls-web"></a>
+#### Toolbar Controls
+
+![Web App — Toolbar Controls](images/Screenshot_Web_3_Controls.png)
+*Placeholder — the Structure tab toolbar (search, filters, toggles, and export buttons).*
+
+The toolbar above the tree provides:
+- **Search by name** and **filter by file type** in real time.
+- **Column toggles**: show or hide **Size**, **Created**, and **Modified**.
+- **Show excluded dirs**: include or hide directories matched by the excludes list.
+- **Expand all** / **Collapse all** for quick navigation.
+- **Copy ASCII**: copy the visible tree as a clean ASCII diagram.
+- **Download JSON**: download just the structure as `project_structure.json`.
+- **Save snapshot** / **Load snapshot**: save a reloadable bundle (structure + file
+  output + excludes) and reopen it later.
+
+All controls have hover hints, and your column/filter preferences persist between
+sessions.
+
+<a id="concatenated-files-and-logs-web"></a>
+#### Concatenated Files and Logs
+
+![Web App — Concatenated Files and Logs](images/Screenshot_Web_4_Logs.png)
+*Placeholder — the Concatenated files and Logs tabs.*
+
+- The **Concatenated files** tab shows the combined text output (the same content the
+  File loader writes), ready to copy or download.
+- The **Logs** tab streams real-time processing details — files processed, files
+  skipped or excluded, and any errors — mirroring the desktop console.
 
 ### Source Modes
 
