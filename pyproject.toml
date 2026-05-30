@@ -8,6 +8,13 @@ dependencies = [
     "humanize>=4.9.0",
 ]
 
+[project.optional-dependencies]
+# Local, read-only MCP server that exposes the core tools to an AI agent.
+# Optional so the core/desktop/web installs stay lean.
+mcp = [
+    "mcp>=1.27.2",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -17,6 +24,8 @@ py-modules = [
     "file_loader_tool",
     "project_structure_tool",
     "tool_runner_ui",
+    "mcp_security",
+    "mcp_server",
 ]
 
 [tool.setuptools.packages.find]
