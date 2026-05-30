@@ -150,11 +150,15 @@
           import("https://esm.sh/memfs@4"),
         ]);
         setStatus("");
+        // memfs's ESM build only exposes a default export; Volume and
+        // createFsFromVolume live on it (no named exports), so fall back to
+        // the default object when the named exports are absent.
+        const memfs = memfsMod.default || memfsMod;
         return {
           git: gitMod.default || gitMod,
           http: httpMod.default || httpMod,
-          Volume: memfsMod.Volume,
-          createFsFromVolume: memfsMod.createFsFromVolume,
+          Volume: memfsMod.Volume || memfs.Volume,
+          createFsFromVolume: memfsMod.createFsFromVolume || memfs.createFsFromVolume,
         };
       } catch (e) {
         // Don't poison future attempts: a transient import failure should be
@@ -527,15 +531,28 @@
   }
 
   // ---- ASCII export -----------------------------------------------------
-  function buildAscii(name, node, prefix, isLast, lines, opts) {
+  // `ancestors` is a list of booleans, one per level from the root down to this
+  // node, where each entry records whether that ancestor was the last child of
+  // its parent. The prefix is rebuilt from it at every level so indentation and
+  // ├──/└── connectors accumulate correctly at any depth (mirrors the desktop).
+  function asciiPrefix(ancestors) {
+    let prefix = "";
+    for (let i = 0; i < ancestors.length - 1; i++) {
+      prefix += ancestors[i] ? "    " : "│   ";
+    }
+    if (ancestors.length) {
+      prefix += ancestors[ancestors.length - 1] ? "└── " : "├── ";
+    }
+    return prefix;
+  }
+
+  function buildAscii(name, node, ancestors, lines, opts) {
     opts = opts || {};
-    const connector = prefix === "" ? "" : isLast ? "└── " : "├── ";
-    let dirLine = prefix + connector + name + "/";
+    let dirLine = asciiPrefix(ancestors) + name + "/";
     if (opts.showSize) {
       dirLine += "  [" + countDescendants(node).files + " files]";
     }
     lines.push(dirLine);
-    const childPrefix = prefix === "" ? "" : prefix + (isLast ? "    " : "│   ");
 
     const subNames = Object.keys(node.subfolders || {}).sort((a, b) =>
       a.toLowerCase().localeCompare(b.toLowerCase())
@@ -547,13 +564,12 @@
     const total = subNames.length + files.length;
     let idx = 0;
     subNames.forEach((key) => {
-      idx++;
-      buildAscii(key, node.subfolders[key], childPrefix, idx === total, lines, opts);
+      const isLast = ++idx === total;
+      buildAscii(key, node.subfolders[key], ancestors.concat(isLast), lines, opts);
     });
     files.forEach((file) => {
-      idx++;
-      const last = idx === total;
-      let line = childPrefix + (last ? "└── " : "├── ") + file.name;
+      const isLast = ++idx === total;
+      let line = asciiPrefix(ancestors.concat(isLast)) + file.name;
       const extra = [];
       if (opts.showSize) extra.push(humanSize(file.size));
       if (opts.showModified && file.modified) extra.push(file.modified);
@@ -651,7 +667,7 @@
       showSize: document.getElementById("show-size").checked,
       showModified: document.getElementById("show-modified").checked,
     };
-    buildAscii(rootName, currentStructure[rootName], "", true, lines, opts);
+    buildAscii(rootName, currentStructure[rootName], [], lines, opts);
     const text = lines.join("\n");
     navigator.clipboard.writeText(text).then(
       () => showToast("ASCII tree copied to clipboard."),
