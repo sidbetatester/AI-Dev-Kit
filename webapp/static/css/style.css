@@ -76,7 +76,7 @@ input[type="file"] {
   color: var(--muted);
 }
 
-textarea, input[type="search"] {
+textarea, input[type="search"], .text-input {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -89,6 +89,16 @@ textarea, input[type="search"] {
 }
 
 input[type="search"] { font-family: inherit; }
+.text-input { font-family: inherit; }
+
+details.advanced { margin-top: 8px; }
+details.advanced summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+details.advanced[open] summary { margin-bottom: 6px; }
 
 .check { display: block; font-size: 13px; margin: 6px 0; cursor: pointer; }
 .check.inline { display: inline-flex; align-items: center; gap: 4px; margin: 0; }

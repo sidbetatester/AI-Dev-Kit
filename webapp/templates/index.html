@@ -21,12 +21,29 @@
     <section class="panel controls">
       <h2>Analyze a project</h2>
       <form id="analyze-form">
-        <div class="field">
+        <fieldset class="field">
+          <legend>Source</legend>
+          <label class="check inline"><input type="radio" name="input-mode" value="local" checked /> Local folder</label>
+          <label class="check inline"><input type="radio" name="input-mode" value="git" /> Public Git URL</label>
+        </fieldset>
+
+        <div class="field" id="local-field">
           <span class="field-label">Project folder</span>
           <button type="button" id="pick-folder" class="ghost">Choose folder…</button>
           <span id="folder-name" class="folder-name">No folder selected</span>
           <input type="file" id="project-folder" webkitdirectory directory multiple hidden />
           <small class="hint">Pick a folder on your computer. Files are read and processed locally in this browser tab — they never leave your machine.</small>
+        </div>
+
+        <div class="field hidden" id="git-field">
+          <span class="field-label">Public repository URL</span>
+          <input type="url" id="git-url" class="text-input" placeholder="https://github.com/user/repo" />
+          <small class="hint">Public repositories only — no login or token. The repo is cloned directly in this browser tab over HTTPS; the files on your own machine are never uploaded. Larger repos are slower than picking a local folder.</small>
+          <details class="advanced">
+            <summary>Advanced: CORS proxy</summary>
+            <input type="url" id="cors-proxy" class="text-input" value="https://cors.isomorphic-git.org" />
+            <small class="hint">Browsers can't speak the raw git protocol, so the clone is relayed through a CORS proxy. The default is a public proxy run by the isomorphic-git project — the repository is public and no credentials are ever sent. Point this at your own proxy if you prefer, or clear it if the host serves CORS headers directly.</small>
+          </details>
         </div>
 
         <fieldset class="field">

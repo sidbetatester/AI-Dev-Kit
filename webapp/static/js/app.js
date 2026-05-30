@@ -15,6 +15,7 @@
   let currentStructure = null;
   let lastOutputs = { text: null, json: null, log: null };
   let pyodidePromise = null;
+  let gitLibsPromise = null;
   let selectedDirHandle = null;
   let selectedFiles = null;
 
@@ -88,6 +89,124 @@
       return pyodide;
     })();
     return pyodidePromise;
+  }
+
+  // ---- Public Git repo clone (client-side, in-browser) ------------------
+  // Browsers can't speak the raw git protocol, so the clone runs over HTTPS
+  // via isomorphic-git relayed through a CORS proxy. Public repos only, no
+  // token. The user's own machine files are never uploaded. The clone lives in
+  // an in-memory filesystem (memfs) — nothing is persisted to disk/IndexedDB.
+  function ensureGitLibs() {
+    if (gitLibsPromise) return gitLibsPromise;
+    gitLibsPromise = (async () => {
+      setStatus("Loading git client (one-time)...");
+      try {
+        const [gitMod, httpMod, memfsMod] = await Promise.all([
+          import("https://esm.sh/isomorphic-git@1.27.1"),
+          import("https://esm.sh/isomorphic-git@1.27.1/http/web"),
+          import("https://esm.sh/memfs@4"),
+        ]);
+        setStatus("");
+        return {
+          git: gitMod.default || gitMod,
+          http: httpMod.default || httpMod,
+          Volume: memfsMod.Volume,
+          createFsFromVolume: memfsMod.createFsFromVolume,
+        };
+      } catch (e) {
+        // Don't poison future attempts: a transient import failure should be
+        // retryable without a full page reload.
+        gitLibsPromise = null;
+        throw e;
+      }
+    })();
+    return gitLibsPromise;
+  }
+
+  function repoNameFromUrl(url) {
+    let pathname = url.trim();
+    try {
+      pathname = new URL(url.trim()).pathname;
+    } catch (e) {
+      /* not a parseable absolute URL — fall back to raw string parsing */
+    }
+    const u = pathname.replace(/\/+$/, "").replace(/\.git$/i, "");
+    const segs = u.split("/").filter(Boolean);
+    const last = segs.length ? segs[segs.length - 1] : "";
+    // Sanitize to a safe directory slug (strip query/fragment leftovers, etc.).
+    const slug = last.replace(/[^A-Za-z0-9._-]/g, "_");
+    return slug || "repo";
+  }
+
+  async function cloneRepoToFs(pyodide, url, excludeSet, corsProxy) {
+    const { git, http, Volume, createFsFromVolume } = await ensureGitLibs();
+    // Fresh in-memory volume per clone; it is garbage-collected once references
+    // drop after we copy the files out — no cleanup, no persistence.
+    const vol = new Volume();
+    const mfs = createFsFromVolume(vol);
+    const pfs = mfs.promises;
+    const dir = "/repo";
+    await pfs.mkdir(dir, { recursive: true });
+
+    setStatus("Cloning repository in your browser...");
+    await git.clone({
+      fs: mfs,
+      http,
+      dir,
+      url,
+      corsProxy: corsProxy || undefined,
+      singleBranch: true,
+      depth: 1,
+      onProgress: (e) => {
+        if (!e || !e.phase) return;
+        const pct = e.total ? " " + Math.round((e.loaded / e.total) * 100) + "%" : "";
+        setStatus("Cloning: " + e.phase + pct);
+      },
+    });
+
+    // Reset the working tree, then copy the clone into Pyodide's MEMFS so the
+    // exact same downstream "run tools" path is reused.
+    pyodide.runPython(
+      "import shutil, os; shutil.rmtree('/work', ignore_errors=True); os.makedirs('/work', exist_ok=True)"
+    );
+    const FS = pyodide.FS;
+    const rootName = repoNameFromUrl(url);
+    const rootPath = "/work/" + rootName;
+    FS.mkdirTree(rootPath);
+
+    let count = 0;
+    async function copyDir(srcDir, destDir) {
+      const entries = await pfs.readdir(srcDir);
+      for (const name of entries) {
+        const srcPath = srcDir === "/" ? "/" + name : srcDir + "/" + name;
+        const destPath = destDir + "/" + name;
+        const st = await pfs.stat(srcPath);
+        if (st.isDirectory()) {
+          // Create every directory (including excluded ones) as a placeholder
+          // so the Python tools see/count it exactly like the folder picker.
+          FS.mkdirTree(destPath);
+          if (!excludeSet.has(name)) {
+            await copyDir(srcPath, destPath);
+          }
+        } else {
+          const data = await pfs.readFile(srcPath);
+          FS.writeFile(destPath, data);
+          try {
+            FS.utime(destPath, st.mtimeMs, st.mtimeMs);
+          } catch (e) {
+            /* best effort */
+          }
+          count++;
+          if (count % 200 === 0) {
+            setStatus("Copying files... " + count);
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+      }
+    }
+    await copyDir(dir, rootPath);
+
+    return { rootName, written: count };
   }
 
   // ---- Build the in-browser filesystem from the picked folder ----------
@@ -405,6 +524,26 @@
 
   const folderInput = document.getElementById("project-folder");
   const folderNameEl = document.getElementById("folder-name");
+  const localField = document.getElementById("local-field");
+  const gitField = document.getElementById("git-field");
+  const gitUrlEl = document.getElementById("git-url");
+  const corsProxyEl = document.getElementById("cors-proxy");
+
+  function getInputMode() {
+    const checked = document.querySelector('input[name="input-mode"]:checked');
+    return checked ? checked.value : "local";
+  }
+
+  function applyInputMode() {
+    const mode = getInputMode();
+    localField.classList.toggle("hidden", mode !== "local");
+    gitField.classList.toggle("hidden", mode !== "git");
+  }
+
+  document.querySelectorAll('input[name="input-mode"]').forEach((radio) => {
+    radio.addEventListener("change", applyInputMode);
+  });
+  applyInputMode();
 
   document.getElementById("pick-folder").addEventListener("click", async () => {
     if (window.showDirectoryPicker) {
@@ -431,7 +570,15 @@
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!selectedDirHandle && (!selectedFiles || !selectedFiles.length)) {
+    const inputMode = getInputMode();
+    const gitUrl = gitUrlEl.value.trim();
+
+    if (inputMode === "git") {
+      if (!gitUrl) {
+        showToast("Enter a public repository URL first.", true);
+        return;
+      }
+    } else if (!selectedDirHandle && (!selectedFiles || !selectedFiles.length)) {
       showToast("Choose a project folder first.", true);
       return;
     }
@@ -451,9 +598,19 @@
 
     try {
       const pyodide = await ensurePyodide();
-      const { rootName } = selectedDirHandle
-        ? await populateFsFromHandle(pyodide, selectedDirHandle, excludeSet)
-        : await populateFs(pyodide, selectedFiles, excludeSet);
+      let rootName;
+      if (inputMode === "git") {
+        ({ rootName } = await cloneRepoToFs(
+          pyodide,
+          gitUrl,
+          excludeSet,
+          corsProxyEl.value.trim()
+        ));
+      } else {
+        ({ rootName } = selectedDirHandle
+          ? await populateFsFromHandle(pyodide, selectedDirHandle, excludeSet)
+          : await populateFs(pyodide, selectedFiles, excludeSet));
+      }
 
       setStatus("Running tools in your browser...");
       await new Promise((r) => setTimeout(r, 0));
