@@ -42,11 +42,11 @@
         <div class="field hidden" id="git-field">
           <span class="field-label">Public repository URL</span>
           <input type="url" id="git-url" class="text-input" placeholder="https://github.com/user/repo" data-tip="Enter a public repository URL (e.g., https://github.com/user/repo)." />
-          <small class="hint">Public repositories only — no login or token. The repo is cloned directly in this browser tab over HTTPS; the files on your own machine are never uploaded. Larger repos are slower than picking a local folder.</small>
+          <small class="hint">Public repositories only — no login or token. The repo is fetched directly in this browser tab over HTTPS; the files on your own machine are never uploaded. Public <strong>GitHub</strong> repos are fetched via the jsDelivr CDN (no proxy needed); other hosts use a client-side git clone. For a non-default branch, paste the <code>…/tree/&lt;branch&gt;</code> URL. Larger repos are slower than picking a local folder.</small>
           <details class="advanced">
-            <summary>Advanced: CORS proxy</summary>
-            <input type="url" id="cors-proxy" class="text-input" value="https://cors.isomorphic-git.org" data-tip="Public repos are relayed through this CORS proxy. If clones fail with a network error, the default proxy may be down — point this at your own proxy." />
-            <small class="hint">Browsers can't speak the raw git protocol, so the clone is relayed through a CORS proxy. The default is a public proxy run by the isomorphic-git project — the repository is public and no credentials are ever sent. If it's down or rate-limited (clones fail with a network error), point this at your own proxy, or clear it if the host serves CORS headers directly.</small>
+            <summary>Advanced: CORS proxy (non-GitHub hosts)</summary>
+            <input type="url" id="cors-proxy" class="text-input" value="https://cors.isomorphic-git.org" data-tip="Only used for non-GitHub hosts. GitHub repos are fetched via jsDelivr and ignore this. If a clone fails with a network error, the default proxy may be down — point this at your own proxy." />
+            <small class="hint">GitHub repos don't use this — they're fetched through the jsDelivr CDN, which serves CORS headers directly. For other hosts (GitLab, Bitbucket, …) browsers can't speak the raw git protocol, so the clone is relayed through a CORS proxy. The default is a public proxy run by the isomorphic-git project; the repository is public and no credentials are ever sent. If it's down or rate-limited (clones fail with a network error), point this at your own proxy, or clear it if the host serves CORS headers directly.</small>
           </details>
         </div>
 

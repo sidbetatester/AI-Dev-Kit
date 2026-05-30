@@ -260,6 +260,162 @@
     return { rootName, written: count };
   }
 
+  // ---- GitHub fast path (no CORS proxy needed) -------------------------
+  // GitHub's own git/codeload endpoints do not send permissive CORS headers,
+  // which is why isomorphic-git needs a relay. The jsDelivr CDN, however,
+  // mirrors public GitHub repos and serves both its file-list API and file
+  // contents with `Access-Control-Allow-Origin: *`, so we can fetch an entire
+  // public GitHub repo directly from the browser — no server, no proxy.
+  function parseGithubUrl(url) {
+    let host;
+    let segs;
+    const raw = url.trim();
+    try {
+      const parsed = new URL(raw);
+      host = parsed.hostname.toLowerCase();
+      segs = parsed.pathname.split("/").filter(Boolean);
+    } catch (e) {
+      const m = raw.match(/^git@github\.com:(.+)$/i);
+      if (!m) return null;
+      host = "github.com";
+      segs = m[1].split("/").filter(Boolean);
+    }
+    if (host !== "github.com" && host !== "www.github.com") return null;
+    if (segs.length < 2) return null;
+    const owner = segs[0];
+    const repo = segs[1].replace(/\.git$/i, "");
+    if (!owner || !repo) return null;
+    // Support .../tree/<ref> URLs so a specific branch/tag can be requested.
+    let ref = null;
+    if (segs.length >= 4 && segs[2] === "tree") ref = decodeURIComponent(segs[3]);
+    return { owner, repo, ref };
+  }
+
+  async function resolveGithubRef(owner, repo, ref) {
+    if (ref) return ref;
+    // GitHub's REST API is CORS-enabled; one request resolves the default
+    // branch. If it fails (e.g. rate-limited), the caller falls back to
+    // trying the common default branch names against jsDelivr.
+    try {
+      const res = await fetch(
+        "https://api.github.com/repos/" +
+          encodeURIComponent(owner) +
+          "/" +
+          encodeURIComponent(repo),
+        { headers: { Accept: "application/vnd.github+json" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.default_branch) return data.default_branch;
+      }
+    } catch (e) {
+      /* fall through to common-default-branch probing */
+    }
+    return null;
+  }
+
+  async function fetchGithubViaJsdelivr(pyodide, owner, repo, ref, excludeSet) {
+    setStatus("Resolving repository...");
+    setIndeterminate();
+    const resolved = await resolveGithubRef(owner, repo, ref);
+    const candidates = resolved ? [resolved] : ["main", "master"];
+
+    let files = null;
+    let usedRef = null;
+    for (const cand of candidates) {
+      checkCancelled();
+      const api =
+        "https://data.jsdelivr.com/v1/packages/gh/" +
+        encodeURIComponent(owner) +
+        "/" +
+        encodeURIComponent(repo) +
+        "@" +
+        encodeURIComponent(cand) +
+        "?structure=flat";
+      const res = await fetch(api);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.files)) {
+          files = data.files;
+          usedRef = cand;
+          break;
+        }
+      }
+    }
+    if (files === null) throw new Error("jsdelivr-list-failed");
+
+    pyodide.runPython(
+      "import shutil, os; shutil.rmtree('/work', ignore_errors=True); os.makedirs('/work', exist_ok=True)"
+    );
+    const FS = pyodide.FS;
+    const rootName = repoNameFromUrl(repo);
+    const rootPath = "/work/" + rootName;
+    FS.mkdirTree(rootPath);
+
+    // Partition into files to download vs. excluded-dir placeholders, mirroring
+    // the local folder flow: excluded dirs are recreated empty (so the Python
+    // tools still see/count them) but their contents are never fetched.
+    const toFetch = [];
+    for (const f of files) {
+      const rel = String((f && f.name) || "").replace(/^\/+/, "");
+      if (!rel) continue;
+      const segs = rel.split("/");
+      const dirSegs = segs.slice(0, -1);
+      let exclIdx = -1;
+      for (let j = 0; j < dirSegs.length; j++) {
+        if (excludeSet.has(dirSegs[j])) {
+          exclIdx = j;
+          break;
+        }
+      }
+      if (exclIdx >= 0) {
+        FS.mkdirTree(rootPath + "/" + dirSegs.slice(0, exclIdx + 1).join("/"));
+        continue;
+      }
+      toFetch.push({ rel, segs });
+    }
+
+    const total = toFetch.length;
+    let done = 0;
+    setStatus("Downloading " + total + " files...");
+    setProgress(0, total);
+
+    const cdnBase =
+      "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + usedRef;
+    let next = 0;
+    async function worker() {
+      while (next < toFetch.length) {
+        const { rel, segs } = toFetch[next++];
+        checkCancelled();
+        const dirPath =
+          segs.length > 1
+            ? rootPath + "/" + segs.slice(0, -1).join("/")
+            : rootPath;
+        FS.mkdirTree(dirPath);
+        const cdnUrl =
+          cdnBase + "/" + rel.split("/").map(encodeURIComponent).join("/");
+        const res = await fetch(cdnUrl);
+        if (!res.ok) {
+          throw new Error(
+            "Couldn't download " + rel + " (HTTP " + res.status + ")"
+          );
+        }
+        FS.writeFile(rootPath + "/" + rel, new Uint8Array(await res.arrayBuffer()));
+        done++;
+        if (done % 25 === 0 || done === total) {
+          setProgress(done, total);
+          setStatus("Downloading files... " + done + "/" + total);
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+    }
+    const pool = [];
+    for (let w = 0; w < Math.min(6, toFetch.length); w++) pool.push(worker());
+    await Promise.all(pool);
+
+    return { rootName, written: done };
+  }
+
   // ---- Build the in-browser filesystem from the picked folder ----------
   function buildExcludeSet(useDefaults, excludeText) {
     const set = new Set(
@@ -860,12 +1016,25 @@
       const pyodide = await ensurePyodide();
       let rootName;
       if (inputMode === "git") {
-        ({ rootName } = await cloneRepoToFs(
-          pyodide,
-          gitUrl,
-          excludeSet,
-          corsProxyEl.value.trim()
-        ));
+        const gh = parseGithubUrl(gitUrl);
+        if (gh) {
+          // Public GitHub repo: fetch via jsDelivr CDN — no proxy required.
+          ({ rootName } = await fetchGithubViaJsdelivr(
+            pyodide,
+            gh.owner,
+            gh.repo,
+            gh.ref,
+            excludeSet
+          ));
+        } else {
+          // Other hosts: fall back to a client-side clone through the proxy.
+          ({ rootName } = await cloneRepoToFs(
+            pyodide,
+            gitUrl,
+            excludeSet,
+            corsProxyEl.value.trim()
+          ));
+        }
       } else {
         ({ rootName } = selectedDirHandle
           ? await populateFsFromHandle(pyodide, selectedDirHandle, excludeSet)
@@ -899,12 +1068,16 @@
       } else {
         console.error(err);
         let msg = err && err.message ? err.message : String(err);
-        if (
-          inputMode === "git" &&
-          /failed to fetch|networkerror|load failed|cors/i.test(msg)
-        ) {
-          msg =
-            "Couldn't reach the repo through the CORS proxy — it may be down or rate-limited. Try again, or set a different proxy under \u201CAdvanced: CORS proxy\u201D.";
+        if (inputMode === "git") {
+          const isGithub = !!parseGithubUrl(gitUrl);
+          if (msg === "jsdelivr-list-failed") {
+            msg =
+              "Couldn't find that GitHub repo or branch. Check the URL points to a public repo; for a non-default branch use the \u2026/tree/<branch> form.";
+          } else if (/failed to fetch|networkerror|load failed|cors/i.test(msg)) {
+            msg = isGithub
+              ? "Couldn't download the repo (jsDelivr/network). Check your connection and that the repo is public, then try again."
+              : "Couldn't reach the repo through the CORS proxy — it may be down or rate-limited. Try again, or set a different proxy under \u201CAdvanced: CORS proxy\u201D.";
+          }
         }
         showToast("Failed: " + msg, true);
       }

@@ -337,11 +337,17 @@ The web app can analyze a project from two sources:
 
 - **Local folder** — pick a folder on your computer. Files are read locally in the tab and
   never leave your machine.
-- **Public Git URL** — clone a **public** repository **entirely client-side** over HTTPS.
-  No token or login is used (public repos only). Because browsers cannot speak the raw git
-  protocol, the fetch is relayed through a configurable **CORS proxy** (defaults to the
-  public `https://cors.isomorphic-git.org`, editable under "Advanced"). The clone lives in
-  an in-memory filesystem and is discarded when you leave the page.
+- **Public Git URL** — fetch a **public** repository **entirely client-side** over HTTPS.
+  No token or login is used (public repos only). For a non-default branch, paste the
+  `…/tree/<branch>` URL.
+  - **GitHub** repos are fetched through the **jsDelivr CDN**, which serves files with
+    permissive CORS headers — so no proxy is needed at all.
+  - **Other hosts** (GitLab, Bitbucket, …) use a client-side git clone. Because browsers
+    cannot speak the raw git protocol, that fetch is relayed through a configurable **CORS
+    proxy** (defaults to the public `https://cors.isomorphic-git.org`, editable under
+    "Advanced"). GitHub repos ignore this field.
+  - Either way the fetched files live in an in-memory filesystem and are discarded when you
+    leave the page; the files on your own machine are never uploaded.
 
 ### Privacy Guarantees
 
