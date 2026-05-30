@@ -39,25 +39,27 @@ def test_core_allowlist() -> None:
     client = app.test_client()
     check(client.get("/").status_code == 200, "GET / returns 200")
 
-    for name in ("file_loader_tool.py", "project_structure_tool.py"):
-        check(name in CORE_MODULES, f"{name} is in the /core allowlist")
-        check(
-            client.get(f"/core/{name}").status_code == 200,
-            f"GET /core/{name} returns 200",
-        )
+    # Discover every Python module in the project root so a newly added
+    # sensitive file is caught automatically: anything not in CORE_MODULES
+    # must be unreachable (404), the two core modules must be served (200).
+    root_modules = sorted(p.name for p in ROOT.glob("*.py"))
+    check(len(root_modules) > 0, "found at least one .py module in project root")
 
-    # Desktop-only / server modules must never be reachable from the browser.
-    for name in (
-        "app.py",
-        "token_encryption.py",
-        "git_remote_tool.py",
-        "tool_runner_ui.py",
-    ):
-        check(name not in CORE_MODULES, f"{name} is NOT in the /core allowlist")
-        check(
-            client.get(f"/core/{name}").status_code == 404,
-            f"GET /core/{name} returns 404",
-        )
+    for name in root_modules:
+        if name in CORE_MODULES:
+            check(
+                client.get(f"/core/{name}").status_code == 200,
+                f"core module GET /core/{name} returns 200",
+            )
+        else:
+            check(
+                client.get(f"/core/{name}").status_code == 404,
+                f"non-core module GET /core/{name} returns 404",
+            )
+
+    # Every allowlisted core module must actually exist in the root.
+    for name in CORE_MODULES:
+        check(name in root_modules, f"{name} (allowlisted) exists in project root")
 
 
 def test_runner_logic() -> None:
