@@ -192,7 +192,7 @@ button.primary:disabled { opacity: 0.6; cursor: progress; }
   text-decoration: none;
 }
 .ghost:hover { border-color: var(--accent); }
-.ghost.disabled { opacity: 0.45; pointer-events: none; }
+.ghost.disabled { opacity: 0.45; cursor: not-allowed; }
 .ghost.subtle { color: var(--muted); padding: 4px 8px; align-self: flex-start; }
 
 .select {

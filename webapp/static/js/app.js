@@ -62,7 +62,7 @@
     toast.classList.toggle("error", !!isError);
     toast.classList.remove("hidden");
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => toast.classList.add("hidden"), 3200);
+    showToast._t = setTimeout(() => toast.classList.add("hidden"), isError ? 7000 : 3200);
   }
 
   function triggerDownload(filename, content) {
@@ -883,7 +883,15 @@
         showToast("Cancelled.");
       } else {
         console.error(err);
-        showToast("Failed: " + (err && err.message ? err.message : err), true);
+        let msg = err && err.message ? err.message : String(err);
+        if (
+          inputMode === "git" &&
+          /failed to fetch|networkerror|load failed|cors/i.test(msg)
+        ) {
+          msg =
+            "Couldn't reach the repo through the CORS proxy — it may be down or rate-limited. Try again, or set a different proxy under \u201CAdvanced: CORS proxy\u201D.";
+        }
+        showToast("Failed: " + msg, true);
       }
     } finally {
       runBtn.disabled = false;

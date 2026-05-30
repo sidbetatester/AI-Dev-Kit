@@ -45,8 +45,8 @@
           <small class="hint">Public repositories only — no login or token. The repo is cloned directly in this browser tab over HTTPS; the files on your own machine are never uploaded. Larger repos are slower than picking a local folder.</small>
           <details class="advanced">
             <summary>Advanced: CORS proxy</summary>
-            <input type="url" id="cors-proxy" class="text-input" value="https://cors.isomorphic-git.org" />
-            <small class="hint">Browsers can't speak the raw git protocol, so the clone is relayed through a CORS proxy. The default is a public proxy run by the isomorphic-git project — the repository is public and no credentials are ever sent. Point this at your own proxy if you prefer, or clear it if the host serves CORS headers directly.</small>
+            <input type="url" id="cors-proxy" class="text-input" value="https://cors.isomorphic-git.org" data-tip="Public repos are relayed through this CORS proxy. If clones fail with a network error, the default proxy may be down — point this at your own proxy." />
+            <small class="hint">Browsers can't speak the raw git protocol, so the clone is relayed through a CORS proxy. The default is a public proxy run by the isomorphic-git project — the repository is public and no credentials are ever sent. If it's down or rate-limited (clones fail with a network error), point this at your own proxy, or clear it if the host serves CORS headers directly.</small>
           </details>
         </div>
 
@@ -84,19 +84,19 @@
 
       <div class="tab-panel active" id="tab-tree">
         <div class="toolbar">
-          <input type="search" id="tree-search" placeholder="Filter by name..." />
-          <select id="type-filter" class="select" title="Filter by file type">
+          <input type="search" id="tree-search" placeholder="Filter by name..." data-tip="Filter the tree to items whose name contains this text." />
+          <select id="type-filter" class="select" data-tip="Show only files with the selected extension.">
             <option value="">All types</option>
           </select>
-          <label class="check inline"><input type="checkbox" id="show-size" checked /> Size</label>
-          <label class="check inline"><input type="checkbox" id="show-modified" checked /> Modified</label>
-          <label class="check inline"><input type="checkbox" id="show-excluded" checked /> Excluded dirs</label>
-          <button id="expand-all" class="ghost">Expand all</button>
-          <button id="collapse-all" class="ghost">Collapse all</button>
-          <button id="copy-ascii" class="ghost">Copy ASCII</button>
-          <button id="download-json" class="ghost disabled">Download JSON</button>
-          <button id="save-snapshot" class="ghost disabled">Save snapshot</button>
-          <button id="load-snapshot" class="ghost">Load snapshot</button>
+          <label class="check inline" data-tip="Show each file's size in the tree."><input type="checkbox" id="show-size" checked /> Size</label>
+          <label class="check inline" data-tip="Show each file's last-modified date in the tree."><input type="checkbox" id="show-modified" checked /> Modified</label>
+          <label class="check inline" data-tip="Show folders skipped by the exclude rules (greyed out)."><input type="checkbox" id="show-excluded" checked /> Excluded dirs</label>
+          <button id="expand-all" class="ghost" data-tip="Open every folder in the tree.">Expand all</button>
+          <button id="collapse-all" class="ghost" data-tip="Close every folder in the tree.">Collapse all</button>
+          <button id="copy-ascii" class="ghost" data-tip="Copy the structure as an ASCII tree to the clipboard.">Copy ASCII</button>
+          <button id="download-json" class="ghost disabled" data-tip="Download only the structure as raw project_structure.json.">Download JSON</button>
+          <button id="save-snapshot" class="ghost disabled" data-tip="Save a reloadable snapshot (structure + file output + excludes) to reopen later with Load snapshot.">Save snapshot</button>
+          <button id="load-snapshot" class="ghost" data-tip="Open a snapshot you saved earlier to view it again.">Load snapshot</button>
           <input type="file" id="snapshot-input" accept="application/json,.json" hidden />
         </div>
         <div id="tree" class="tree-view">
