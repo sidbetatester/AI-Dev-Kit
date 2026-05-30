@@ -12,7 +12,7 @@
       <span class="logo">PT</span>
       <div>
         <h1>Project Tools Runner</h1>
-        <p class="subtitle">Concatenate files &amp; visualize project structure — in your browser</p>
+        <p class="subtitle">Concatenate files &amp; visualize project structure — runs entirely in your browser, nothing is uploaded</p>
       </div>
     </div>
   </header>
@@ -21,11 +21,13 @@
     <section class="panel controls">
       <h2>Analyze a project</h2>
       <form id="analyze-form">
-        <label class="field">
-          <span class="field-label">Project archive (.zip)</span>
-          <input type="file" id="project-file" name="project" accept=".zip" required />
-          <small class="hint">Zip your project folder and upload it. Max 100 MB.</small>
-        </label>
+        <div class="field">
+          <span class="field-label">Project folder</span>
+          <button type="button" id="pick-folder" class="ghost">Choose folder…</button>
+          <span id="folder-name" class="folder-name">No folder selected</span>
+          <input type="file" id="project-folder" webkitdirectory directory multiple hidden />
+          <small class="hint">Pick a folder on your computer. Files are read and processed locally in this browser tab — they never leave your machine.</small>
+        </div>
 
         <fieldset class="field">
           <legend>Tools</legend>
@@ -41,6 +43,7 @@
         </fieldset>
 
         <button type="submit" id="run-btn" class="primary">Run Tools</button>
+        <p id="status" class="status-line"></p>
       </form>
 
       <div id="summary" class="summary hidden"></div>
@@ -61,24 +64,24 @@
           <button id="expand-all" class="ghost">Expand all</button>
           <button id="collapse-all" class="ghost">Collapse all</button>
           <button id="copy-ascii" class="ghost">Copy ASCII</button>
-          <a id="download-json" class="ghost disabled" href="#">Download JSON</a>
+          <button id="download-json" class="ghost disabled">Download JSON</button>
         </div>
         <div id="tree" class="tree-view">
-          <p class="empty">Run the tools to see your project structure here.</p>
+          <p class="empty">Pick a folder and run the tools to see your project structure here.</p>
         </div>
       </div>
 
       <div class="tab-panel" id="tab-files">
         <div class="toolbar">
           <span id="files-stats" class="stats"></span>
-          <a id="download-text" class="ghost disabled" href="#">Download .txt</a>
+          <button id="download-text" class="ghost disabled">Download .txt</button>
         </div>
         <pre id="files-output" class="code-output"><span class="empty">Concatenated file contents will appear here.</span></pre>
       </div>
 
       <div class="tab-panel" id="tab-logs">
         <div class="toolbar">
-          <a id="download-log" class="ghost disabled" href="#">Download log</a>
+          <button id="download-log" class="ghost disabled">Download log</button>
         </div>
         <pre id="logs-output" class="code-output"><span class="empty">Processing logs will appear here.</span></pre>
       </div>
@@ -87,6 +90,10 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <script>
+    window.DEFAULT_EXCLUDES = {{ default_excludes_list | tojson }};
+  </script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

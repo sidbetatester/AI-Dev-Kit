@@ -3,6 +3,7 @@
 
   const form = document.getElementById("analyze-form");
   const runBtn = document.getElementById("run-btn");
+  const statusEl = document.getElementById("status");
   const summaryEl = document.getElementById("summary");
   const treeEl = document.getElementById("tree");
   const filesOutput = document.getElementById("files-output");
@@ -12,7 +13,10 @@
   const toast = document.getElementById("toast");
 
   let currentStructure = null;
-  let currentRootName = "";
+  let lastOutputs = { text: null, json: null, log: null };
+  let pyodidePromise = null;
+  let selectedDirHandle = null;
+  let selectedFiles = null;
 
   // ---- Tabs -------------------------------------------------------------
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -37,6 +41,10 @@
     return (i === 0 ? n : n.toFixed(1)) + " " + units[i];
   }
 
+  function setStatus(message) {
+    statusEl.textContent = message || "";
+  }
+
   function showToast(message, isError) {
     toast.textContent = message;
     toast.classList.toggle("error", !!isError);
@@ -45,15 +53,148 @@
     showToast._t = setTimeout(() => toast.classList.add("hidden"), 3200);
   }
 
-  function setDownload(id, token, kind, enabled) {
-    const el = document.getElementById(id);
-    if (enabled) {
-      el.href = "/api/download/" + token + "/" + kind;
-      el.classList.remove("disabled");
-    } else {
-      el.href = "#";
-      el.classList.add("disabled");
+  function triggerDownload(filename, content) {
+    if (content == null) return;
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function setDownloadEnabled(id, enabled) {
+    document.getElementById(id).classList.toggle("disabled", !enabled);
+  }
+
+  // ---- Pyodide bootstrap ------------------------------------------------
+  function ensurePyodide() {
+    if (pyodidePromise) return pyodidePromise;
+    pyodidePromise = (async () => {
+      setStatus("Loading Python runtime (one-time, ~10s)...");
+      const pyodide = await loadPyodide();
+      const modules = ["file_loader_tool.py", "project_structure_tool.py"];
+      for (const name of modules) {
+        const res = await fetch("/core/" + name);
+        if (!res.ok) throw new Error("Could not load core module: " + name);
+        pyodide.FS.writeFile("/home/pyodide/" + name, await res.text());
+      }
+      const runnerRes = await fetch("/static/py/runner.py");
+      pyodide.runPython(await runnerRes.text());
+      setStatus("");
+      return pyodide;
+    })();
+    return pyodidePromise;
+  }
+
+  // ---- Build the in-browser filesystem from the picked folder ----------
+  function buildExcludeSet(useDefaults, excludeText) {
+    const set = new Set(
+      excludeText.split(",").map((s) => s.trim()).filter(Boolean)
+    );
+    if (useDefaults) {
+      (window.DEFAULT_EXCLUDES || []).forEach((d) => set.add(d));
     }
+    return set;
+  }
+
+  async function populateFsFromHandle(pyodide, dirHandle, excludeSet) {
+    pyodide.runPython(
+      "import shutil, os; shutil.rmtree('/work', ignore_errors=True); os.makedirs('/work', exist_ok=True)"
+    );
+    const FS = pyodide.FS;
+    const rootName = dirHandle.name || "project";
+    const rootPath = "/work/" + rootName;
+    FS.mkdirTree(rootPath);
+
+    let count = 0;
+    async function recurse(handle, path) {
+      for await (const entry of handle.values()) {
+        const childPath = path + "/" + entry.name;
+        if (entry.kind === "directory") {
+          // Create every directory (including empty ones) so the structure
+          // matches the desktop tool exactly. Excluded dirs are created as
+          // empty placeholders and not descended into.
+          FS.mkdirTree(childPath);
+          if (!excludeSet.has(entry.name)) {
+            await recurse(entry, childPath);
+          }
+        } else {
+          const file = await entry.getFile();
+          FS.writeFile(childPath, new Uint8Array(await file.arrayBuffer()));
+          try {
+            FS.utime(childPath, file.lastModified, file.lastModified);
+          } catch (e) {
+            /* best effort */
+          }
+          count++;
+          if (count % 200 === 0) {
+            setStatus("Reading files locally... " + count);
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+      }
+    }
+    await recurse(dirHandle, rootPath);
+    return { rootName, written: count };
+  }
+
+  async function populateFs(pyodide, files, excludeSet) {
+    // Reset the working tree.
+    pyodide.runPython(
+      "import shutil, os; shutil.rmtree('/work', ignore_errors=True); os.makedirs('/work', exist_ok=True)"
+    );
+    const FS = pyodide.FS;
+    const rootName = files[0].webkitRelativePath.split("/")[0] || "project";
+
+    let written = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const parts = file.webkitRelativePath.split("/");
+      const filename = parts[parts.length - 1];
+      const dirSegs = parts.slice(1, -1); // segments below the root folder
+
+      // Determine if this file lives inside an excluded directory.
+      let exclIdx = -1;
+      for (let j = 0; j < dirSegs.length; j++) {
+        if (excludeSet.has(dirSegs[j])) {
+          exclIdx = j;
+          break;
+        }
+      }
+
+      if (exclIdx >= 0) {
+        // Create the outermost excluded dir (empty) so the Python tools still
+        // see and count it exactly as the desktop app would, without loading
+        // its contents into memory.
+        const exclPath =
+          "/work/" + parts[0] + "/" + dirSegs.slice(0, exclIdx + 1).join("/");
+        FS.mkdirTree(exclPath);
+        continue;
+      }
+
+      const dirPath = "/work/" + parts.slice(0, -1).join("/");
+      FS.mkdirTree(dirPath);
+      const fsPath = dirPath + "/" + filename;
+      const buf = new Uint8Array(await file.arrayBuffer());
+      FS.writeFile(fsPath, buf);
+      // Preserve the real last-modified time (Emscripten utime takes ms).
+      try {
+        FS.utime(fsPath, file.lastModified, file.lastModified);
+      } catch (e) {
+        /* best effort */
+      }
+
+      written++;
+      if (i % 200 === 0) {
+        setStatus("Reading files locally... " + (i + 1) + "/" + files.length);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+    return { rootName, written };
   }
 
   // ---- Tree rendering ---------------------------------------------------
@@ -148,7 +289,7 @@
   function renderTree() {
     treeEl.innerHTML = "";
     if (!currentStructure) {
-      treeEl.innerHTML = '<p class="empty">Run the tools to see your project structure here.</p>';
+      treeEl.innerHTML = '<p class="empty">Pick a folder and run the tools to see your project structure here.</p>';
       return;
     }
     const rootName = Object.keys(currentStructure)[0];
@@ -252,35 +393,90 @@
     );
   });
 
+  document.getElementById("download-text").addEventListener("click", () =>
+    triggerDownload("loaded_files_output.txt", lastOutputs.text)
+  );
+  document.getElementById("download-json").addEventListener("click", () =>
+    triggerDownload("project_structure.json", lastOutputs.json)
+  );
+  document.getElementById("download-log").addEventListener("click", () =>
+    triggerDownload("file_loader_log.txt", lastOutputs.log)
+  );
+
+  const folderInput = document.getElementById("project-folder");
+  const folderNameEl = document.getElementById("folder-name");
+
+  document.getElementById("pick-folder").addEventListener("click", async () => {
+    if (window.showDirectoryPicker) {
+      try {
+        selectedDirHandle = await window.showDirectoryPicker();
+        selectedFiles = null;
+        folderNameEl.textContent = selectedDirHandle.name;
+      } catch (e) {
+        /* user cancelled */
+      }
+    } else {
+      folderInput.click();
+    }
+  });
+
+  folderInput.addEventListener("change", () => {
+    if (folderInput.files && folderInput.files.length) {
+      selectedFiles = folderInput.files;
+      selectedDirHandle = null;
+      folderNameEl.textContent =
+        folderInput.files[0].webkitRelativePath.split("/")[0] || "Selected folder";
+    }
+  });
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fileInput = document.getElementById("project-file");
-    if (!fileInput.files.length) {
-      showToast("Choose a .zip file first.", true);
+    if (!selectedDirHandle && (!selectedFiles || !selectedFiles.length)) {
+      showToast("Choose a project folder first.", true);
+      return;
+    }
+    const runLoader = document.getElementById("run-loader").checked;
+    const runStructure = document.getElementById("run-structure").checked;
+    if (!runLoader && !runStructure) {
+      showToast("Select at least one tool to run.", true);
       return;
     }
 
-    const fd = new FormData();
-    fd.append("project", fileInput.files[0]);
-    fd.append("run_loader", document.getElementById("run-loader").checked);
-    fd.append("run_structure", document.getElementById("run-structure").checked);
-    fd.append("use_default_excludes", document.getElementById("use-defaults").checked);
-    fd.append("exclude_dirs", document.getElementById("exclude-dirs").value);
+    const useDefaults = document.getElementById("use-defaults").checked;
+    const excludeText = document.getElementById("exclude-dirs").value;
+    const excludeSet = buildExcludeSet(useDefaults, excludeText);
 
     runBtn.disabled = true;
     runBtn.textContent = "Running...";
 
     try {
-      const res = await fetch("/api/analyze", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Something went wrong.", true);
-        return;
-      }
+      const pyodide = await ensurePyodide();
+      const { rootName } = selectedDirHandle
+        ? await populateFsFromHandle(pyodide, selectedDirHandle, excludeSet)
+        : await populateFs(pyodide, selectedFiles, excludeSet);
+
+      setStatus("Running tools in your browser...");
+      await new Promise((r) => setTimeout(r, 0));
+
+      const runFn = pyodide.globals.get("run_tools");
+      // Signature: run_tools(root, run_loader, run_structure, exclude_csv, use_defaults)
+      const resultJson = runFn(
+        "/work/" + rootName,
+        runLoader ? true : false,
+        runStructure ? true : false,
+        excludeText,
+        useDefaults
+      );
+      runFn.destroy();
+
+      const data = JSON.parse(resultJson);
       renderResults(data);
-      showToast("Analysis complete.");
+      setStatus("");
+      showToast("Analysis complete — processed locally, nothing uploaded.");
     } catch (err) {
-      showToast("Request failed: " + err.message, true);
+      console.error(err);
+      setStatus("");
+      showToast("Failed: " + (err && err.message ? err.message : err), true);
     } finally {
       runBtn.disabled = false;
       runBtn.textContent = "Run Tools";
@@ -288,23 +484,24 @@
   });
 
   function renderResults(data) {
-    const token = data.token;
-
     // Structure
     if (data.structure) {
       currentStructure = data.structure;
-      currentRootName = data.root_name;
+      lastOutputs.json = data.structure_json || null;
       renderTree();
-      setDownload("download-json", token, "json", true);
+      setDownloadEnabled("download-json", true);
     } else {
       currentStructure = null;
+      lastOutputs.json = null;
       renderTree();
-      setDownload("download-json", token, "json", false);
+      setDownloadEnabled("download-json", false);
     }
 
     // Loader
     if (data.loader) {
       const l = data.loader;
+      lastOutputs.text = data.loader_text || null;
+      lastOutputs.log = data.loader_log || null;
       filesOutput.textContent =
         l.preview + (l.truncated ? "\n\n... (truncated — download the full file) ..." : "");
       filesStats.textContent =
@@ -314,13 +511,15 @@
         " skipped · " +
         l.total_chars.toLocaleString() +
         " characters";
-      setDownload("download-text", token, "text", true);
-      setDownload("download-log", token, "log", true);
+      setDownloadEnabled("download-text", true);
+      setDownloadEnabled("download-log", true);
     } else {
+      lastOutputs.text = null;
+      lastOutputs.log = null;
       filesOutput.innerHTML = '<span class="empty">File loader was not run.</span>';
       filesStats.textContent = "";
-      setDownload("download-text", token, "text", false);
-      setDownload("download-log", token, "log", false);
+      setDownloadEnabled("download-text", false);
+      setDownloadEnabled("download-log", false);
     }
 
     // Logs
