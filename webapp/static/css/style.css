@@ -187,6 +187,51 @@ button.primary:disabled { opacity: 0.6; cursor: progress; }
 }
 .ghost:hover { border-color: var(--accent); }
 .ghost.disabled { opacity: 0.45; pointer-events: none; }
+.ghost.subtle { color: var(--muted); padding: 4px 8px; align-self: flex-start; }
+
+.select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.select:hover { border-color: var(--accent); }
+
+.run-row { display: flex; gap: 8px; align-items: stretch; }
+.run-row .primary { flex: 1; }
+
+progress.progress {
+  width: 100%;
+  height: 6px;
+  margin-top: 10px;
+  border: none;
+  border-radius: 4px;
+  background: var(--panel-2);
+  overflow: hidden;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+progress.progress::-webkit-progress-bar { background: var(--panel-2); border-radius: 4px; }
+progress.progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; }
+progress.progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
+progress.progress:indeterminate { background: linear-gradient(90deg, var(--panel-2) 40%, var(--accent) 50%, var(--panel-2) 60%); background-size: 200% 100%; animation: progress-slide 1.1s linear infinite; }
+@keyframes progress-slide { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.badge {
+  font-size: 10px;
+  color: var(--amber);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.node-row.excluded-dir .node-name.dir { color: var(--muted); font-weight: 500; font-style: italic; }
 
 .stats { color: var(--muted); font-size: 12px; }
 

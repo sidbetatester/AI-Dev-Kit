@@ -59,8 +59,13 @@
           <small class="hint">Folder names (not paths) to skip during the scan.</small>
         </fieldset>
 
-        <button type="submit" id="run-btn" class="primary">Run Tools</button>
+        <div class="run-row">
+          <button type="submit" id="run-btn" class="primary">Run Tools</button>
+          <button type="button" id="cancel-btn" class="ghost hidden">Cancel</button>
+        </div>
+        <progress id="progress" class="progress hidden"></progress>
         <p id="status" class="status-line"></p>
+        <button type="button" id="reset-settings" class="ghost subtle">Reset settings</button>
       </form>
 
       <div id="summary" class="summary hidden"></div>
@@ -76,12 +81,19 @@
       <div class="tab-panel active" id="tab-tree">
         <div class="toolbar">
           <input type="search" id="tree-search" placeholder="Filter by name..." />
+          <select id="type-filter" class="select" title="Filter by file type">
+            <option value="">All types</option>
+          </select>
           <label class="check inline"><input type="checkbox" id="show-size" checked /> Size</label>
           <label class="check inline"><input type="checkbox" id="show-modified" checked /> Modified</label>
+          <label class="check inline"><input type="checkbox" id="show-excluded" checked /> Excluded dirs</label>
           <button id="expand-all" class="ghost">Expand all</button>
           <button id="collapse-all" class="ghost">Collapse all</button>
           <button id="copy-ascii" class="ghost">Copy ASCII</button>
           <button id="download-json" class="ghost disabled">Download JSON</button>
+          <button id="save-snapshot" class="ghost disabled">Save snapshot</button>
+          <button id="load-snapshot" class="ghost">Load snapshot</button>
+          <input type="file" id="snapshot-input" accept="application/json,.json" hidden />
         </div>
         <div id="tree" class="tree-view">
           <p class="empty">Pick a folder and run the tools to see your project structure here.</p>
@@ -98,6 +110,8 @@
 
       <div class="tab-panel" id="tab-logs">
         <div class="toolbar">
+          <button id="clear-logs" class="ghost">Clear</button>
+          <button id="copy-logs" class="ghost">Copy logs</button>
           <button id="download-log" class="ghost disabled">Download log</button>
         </div>
         <pre id="logs-output" class="code-output"><span class="empty">Processing logs will appear here.</span></pre>

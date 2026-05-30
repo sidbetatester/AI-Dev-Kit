@@ -26,6 +26,37 @@ def _build_excludes(exclude_csv, use_defaults):
     return customs
 
 
+def _inject_excluded_dirs(node, fs_path, excludes):
+    """Re-add excluded directories to the *in-memory* structure as empty,
+    flagged placeholder nodes so the web UI can show/hide them (desktop parity).
+
+    The core ProjectStructureTool prunes excluded dirs entirely, and the saved
+    project_structure.json is left untouched (pruned, byte-identical to desktop).
+    This web-only pass only mutates the dict returned for display; it never
+    descends into excluded dirs.
+    """
+    try:
+        entries = list(os.scandir(fs_path))
+    except OSError:
+        return
+    subs = node.setdefault("subfolders", {})
+    for entry in entries:
+        try:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+        except OSError:
+            continue
+        if entry.name in excludes:
+            if entry.name not in subs:
+                subs[entry.name] = {
+                    "files": [],
+                    "subfolders": {},
+                    "excluded": True,
+                }
+        elif entry.name in subs:
+            _inject_excluded_dirs(subs[entry.name], entry.path, excludes)
+
+
 def run_tools(root, run_loader, run_structure, exclude_csv, use_defaults):
     """Run the selected tools against an already-populated virtual filesystem."""
     logs = []
@@ -51,9 +82,15 @@ def run_tools(root, run_loader, run_structure, exclude_csv, use_defaults):
         structure = structure_tool.build_project_structure()
         json_path = os.path.join(OUTPUT_DIR, "project_structure.json")
         structure_tool.save_project_structure(json_path)
-        result["structure"] = structure
         with open(json_path, encoding="utf-8") as fh:
             result["structure_json"] = fh.read()
+        # Web-only display pass: re-add excluded dirs as empty flagged nodes so
+        # the UI can show/hide them. Done AFTER saving so the downloaded JSON
+        # stays pruned and byte-identical to the desktop output.
+        if excludes:
+            for root_node in structure.values():
+                _inject_excluded_dirs(root_node, root, excludes)
+        result["structure"] = structure
 
     if run_loader:
         loader = FileLoaderTool(root, logger=log, exclude_dirs=excludes)

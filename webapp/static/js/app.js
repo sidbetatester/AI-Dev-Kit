@@ -18,6 +18,17 @@
   let gitLibsPromise = null;
   let selectedDirHandle = null;
   let selectedFiles = null;
+  let lastExcludeSet = new Set();
+  let lastData = null;
+  let cancelRequested = false;
+  let pendingTypeFilter = null;
+
+  const cancelBtn = document.getElementById("cancel-btn");
+  const progressEl = document.getElementById("progress");
+  const typeFilter = document.getElementById("type-filter");
+  const showExcludedEl = document.getElementById("show-excluded");
+  const SETTINGS_KEY = "ptr-settings-v1";
+  const CANCELLED = "__cancelled__";
 
   // ---- Tabs -------------------------------------------------------------
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -69,6 +80,38 @@
 
   function setDownloadEnabled(id, enabled) {
     document.getElementById(id).classList.toggle("disabled", !enabled);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+  }
+
+  function fileExt(name) {
+    const i = name.lastIndexOf(".");
+    if (i <= 0) return ""; // no extension, or a dotfile like ".gitignore"
+    return name.slice(i).toLowerCase();
+  }
+
+  function checkCancelled() {
+    if (cancelRequested) throw new Error(CANCELLED);
+  }
+
+  function showProgress() {
+    progressEl.classList.remove("hidden");
+    setIndeterminate();
+  }
+  function hideProgress() {
+    progressEl.classList.add("hidden");
+    progressEl.removeAttribute("value");
+  }
+  function setProgress(value, max) {
+    progressEl.max = max || 100;
+    progressEl.value = value;
+  }
+  function setIndeterminate() {
+    progressEl.removeAttribute("value");
   }
 
   // ---- Pyodide bootstrap ------------------------------------------------
@@ -158,7 +201,10 @@
       singleBranch: true,
       depth: 1,
       onProgress: (e) => {
+        checkCancelled();
         if (!e || !e.phase) return;
+        if (e.total) setProgress(e.loaded, e.total);
+        else setIndeterminate();
         const pct = e.total ? " " + Math.round((e.loaded / e.total) * 100) + "%" : "";
         setStatus("Cloning: " + e.phase + pct);
       },
@@ -178,6 +224,7 @@
     async function copyDir(srcDir, destDir) {
       const entries = await pfs.readdir(srcDir);
       for (const name of entries) {
+        checkCancelled();
         const srcPath = srcDir === "/" ? "/" + name : srcDir + "/" + name;
         const destPath = destDir + "/" + name;
         const st = await pfs.stat(srcPath);
@@ -232,6 +279,7 @@
     let count = 0;
     async function recurse(handle, path) {
       for await (const entry of handle.values()) {
+        checkCancelled();
         const childPath = path + "/" + entry.name;
         if (entry.kind === "directory") {
           // Create every directory (including empty ones) so the structure
@@ -271,6 +319,7 @@
 
     let written = 0;
     for (let i = 0; i < files.length; i++) {
+      checkCancelled();
       const file = files[i];
       const parts = file.webkitRelativePath.split("/");
       const filename = parts[parts.length - 1];
@@ -310,6 +359,7 @@
       written++;
       if (i % 200 === 0) {
         setStatus("Reading files locally... " + (i + 1) + "/" + files.length);
+        setProgress(i + 1, files.length);
         await new Promise((r) => setTimeout(r, 0));
       }
     }
@@ -322,6 +372,9 @@
     let folders = 0;
     const subs = node.subfolders || {};
     for (const key of Object.keys(subs)) {
+      // Excluded placeholders are display-only — they aren't part of the real
+      // counts (keeps totals identical to the pruned structure / desktop).
+      if (subs[key] && subs[key].excluded) continue;
       folders += 1;
       const c = countDescendants(subs[key]);
       files += c.files;
@@ -330,10 +383,12 @@
     return { files, folders };
   }
 
-  function makeRow(name, isDir, meta, depth) {
+  function makeRow(name, isDir, meta, depth, opts) {
+    opts = opts || {};
     const row = document.createElement("div");
-    row.className = "node-row";
+    row.className = "node-row" + (opts.excluded ? " excluded-dir" : "");
     row.style.paddingLeft = depth * 16 + "px";
+    if (!isDir) row.dataset.ext = fileExt(name);
 
     const twisty = document.createElement("span");
     twisty.className = "twisty" + (isDir ? "" : " leaf");
@@ -342,8 +397,20 @@
 
     const nameEl = document.createElement("span");
     nameEl.className = "node-name " + (isDir ? "dir" : "file");
-    nameEl.textContent = name;
     nameEl.dataset.name = name.toLowerCase();
+
+    const label = document.createElement("span");
+    label.className = "node-label";
+    label.textContent = name;
+    label.dataset.text = name;
+    nameEl.appendChild(label);
+
+    if (opts.excluded) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "excluded";
+      nameEl.appendChild(badge);
+    }
     row.appendChild(nameEl);
 
     const sizeMeta = document.createElement("span");
@@ -363,12 +430,14 @@
     const container = document.createElement("div");
     container.className = "node";
 
+    const isExcluded = !!(node && node.excluded);
     const counts = countDescendants(node);
     const { row, twisty } = makeRow(
       name,
       true,
       { size: counts.files + " files", modified: "" },
-      depth
+      depth,
+      { excluded: isExcluded }
     );
     container.appendChild(row);
 
@@ -414,6 +483,40 @@
     const rootName = Object.keys(currentStructure)[0];
     treeEl.appendChild(renderNode(rootName, currentStructure[rootName], 0));
     applyColumnVisibility();
+    populateTypeFilter();
+    applyFilters();
+  }
+
+  function collectExts(node, set) {
+    (node.files || []).forEach((f) => set.add(fileExt(f.name)));
+    const subs = node.subfolders || {};
+    Object.keys(subs).forEach((k) => collectExts(subs[k], set));
+  }
+
+  function populateTypeFilter() {
+    const prev = typeFilter.value;
+    const set = new Set();
+    if (currentStructure) {
+      const root = currentStructure[Object.keys(currentStructure)[0]];
+      collectExts(root, set);
+    }
+    const hasNoExt = set.delete("");
+    const exts = Array.from(set).sort();
+    let html = '<option value="">All types</option>';
+    html += exts
+      .map((e) => '<option value="' + escapeHtml(e) + '">' + escapeHtml(e) + "</option>")
+      .join("");
+    if (hasNoExt) html += '<option value="__none__">(no extension)</option>';
+    typeFilter.innerHTML = html;
+
+    const desired = prev || pendingTypeFilter;
+    if (
+      desired &&
+      Array.prototype.some.call(typeFilter.options, (o) => o.value === desired)
+    ) {
+      typeFilter.value = desired;
+    }
+    pendingTypeFilter = null;
   }
 
   function applyColumnVisibility() {
@@ -424,9 +527,14 @@
   }
 
   // ---- ASCII export -----------------------------------------------------
-  function buildAscii(name, node, prefix, isLast, lines) {
+  function buildAscii(name, node, prefix, isLast, lines, opts) {
+    opts = opts || {};
     const connector = prefix === "" ? "" : isLast ? "└── " : "├── ";
-    lines.push(prefix + connector + name + "/");
+    let dirLine = prefix + connector + name + "/";
+    if (opts.showSize) {
+      dirLine += "  [" + countDescendants(node).files + " files]";
+    }
+    lines.push(dirLine);
     const childPrefix = prefix === "" ? "" : prefix + (isLast ? "    " : "│   ");
 
     const subNames = Object.keys(node.subfolders || {}).sort((a, b) =>
@@ -440,50 +548,85 @@
     let idx = 0;
     subNames.forEach((key) => {
       idx++;
-      buildAscii(key, node.subfolders[key], childPrefix, idx === total, lines);
+      buildAscii(key, node.subfolders[key], childPrefix, idx === total, lines, opts);
     });
     files.forEach((file) => {
       idx++;
       const last = idx === total;
-      lines.push(childPrefix + (last ? "└── " : "├── ") + file.name);
+      let line = childPrefix + (last ? "└── " : "├── ") + file.name;
+      const extra = [];
+      if (opts.showSize) extra.push(humanSize(file.size));
+      if (opts.showModified && file.modified) extra.push(file.modified);
+      if (extra.length) line += "  (" + extra.join(", ") + ")";
+      lines.push(line);
     });
   }
 
-  // ---- Search filter ----------------------------------------------------
-  function filterTree(query) {
-    const q = query.trim().toLowerCase();
+  // ---- Filters (name search + file type + excluded dirs) ----------------
+  function applyFilters() {
+    const q = treeSearch.value.trim().toLowerCase();
+    const type = typeFilter.value;
+    const showExcluded = showExcludedEl.checked;
     const rows = treeEl.querySelectorAll(".node-row");
-    if (!q) {
-      rows.forEach((r) => {
-        r.classList.remove("hidden");
-        const nameEl = r.querySelector(".node-name");
-        nameEl.innerHTML = nameEl.textContent;
-      });
-      return;
-    }
+
     rows.forEach((r) => {
       const nameEl = r.querySelector(".node-name");
+      const label = r.querySelector(".node-label");
       const name = nameEl.dataset.name || "";
-      if (name.includes(q)) {
-        r.classList.remove("hidden");
-        const original = nameEl.textContent;
-        const i = name.indexOf(q);
-        nameEl.innerHTML =
-          original.slice(0, i) +
-          "<mark>" +
-          original.slice(i, i + q.length) +
-          "</mark>" +
-          original.slice(i + q.length);
-      } else {
-        r.classList.add("hidden");
+      const isFile = nameEl.classList.contains("file");
+      let visible = true;
+
+      if (r.classList.contains("excluded-dir") && !showExcluded) visible = false;
+
+      if (visible && type && isFile) {
+        const ext = r.dataset.ext || "";
+        if (type === "__none__") {
+          if (ext !== "") visible = false;
+        } else if (ext !== type) {
+          visible = false;
+        }
       }
+
+      const original = label.dataset.text || label.textContent;
+      if (visible && q) {
+        const i = original.toLowerCase().indexOf(q);
+        if (i >= 0) {
+          label.innerHTML =
+            escapeHtml(original.slice(0, i)) +
+            "<mark>" +
+            escapeHtml(original.slice(i, i + q.length)) +
+            "</mark>" +
+            escapeHtml(original.slice(i + q.length));
+        } else {
+          visible = false;
+          label.textContent = original;
+        }
+      } else {
+        label.textContent = original;
+      }
+
+      r.classList.toggle("hidden", !visible);
     });
   }
 
   // ---- Events -----------------------------------------------------------
-  treeSearch.addEventListener("input", (e) => filterTree(e.target.value));
-  document.getElementById("show-size").addEventListener("change", applyColumnVisibility);
-  document.getElementById("show-modified").addEventListener("change", applyColumnVisibility);
+  treeSearch.addEventListener("input", applyFilters);
+  typeFilter.addEventListener("change", () => {
+    applyFilters();
+    saveSettings();
+  });
+  showExcludedEl.addEventListener("change", () => {
+    applyFilters();
+    saveSettings();
+  });
+  document.getElementById("show-size").addEventListener("change", () => {
+    applyColumnVisibility();
+    saveSettings();
+  });
+  document.getElementById("show-modified").addEventListener("change", () => {
+    applyColumnVisibility();
+    saveSettings();
+  });
 
   document.getElementById("expand-all").addEventListener("click", () => {
     treeEl.querySelectorAll(".children").forEach((c) => c.classList.remove("collapsed"));
@@ -504,7 +647,11 @@
     }
     const rootName = Object.keys(currentStructure)[0];
     const lines = [];
-    buildAscii(rootName, currentStructure[rootName], "", true, lines);
+    const opts = {
+      showSize: document.getElementById("show-size").checked,
+      showModified: document.getElementById("show-modified").checked,
+    };
+    buildAscii(rootName, currentStructure[rootName], "", true, lines, opts);
     const text = lines.join("\n");
     navigator.clipboard.writeText(text).then(
       () => showToast("ASCII tree copied to clipboard."),
@@ -521,6 +668,63 @@
   document.getElementById("download-log").addEventListener("click", () =>
     triggerDownload("file_loader_log.txt", lastOutputs.log)
   );
+
+  document.getElementById("clear-logs").addEventListener("click", () => {
+    logsOutput.innerHTML = '<span class="empty">Processing logs will appear here.</span>';
+    setDownloadEnabled("download-log", false);
+  });
+  document.getElementById("copy-logs").addEventListener("click", () => {
+    const text = logsOutput.textContent || "";
+    if (!text.trim()) {
+      showToast("No logs to copy.", true);
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => showToast("Logs copied to clipboard."),
+      () => showToast("Copy failed.", true)
+    );
+  });
+
+  // ---- Tree snapshot save / load ---------------------------------------
+  document.getElementById("save-snapshot").addEventListener("click", () => {
+    if (!lastData) {
+      showToast("Run the tools first — nothing to save yet.", true);
+      return;
+    }
+    const snap = {
+      type: "project-tools-runner-snapshot",
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      excludes: Array.from(lastExcludeSet),
+      data: lastData,
+    };
+    triggerDownload("project_snapshot.json", JSON.stringify(snap, null, 2));
+  });
+  document.getElementById("load-snapshot").addEventListener("click", () =>
+    document.getElementById("snapshot-input").click()
+  );
+  document.getElementById("snapshot-input").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const snap = JSON.parse(await file.text());
+      const data = snap && snap.data ? snap.data : snap;
+      if (!data || (!data.structure && !data.loader)) {
+        throw new Error("Not a recognized snapshot file.");
+      }
+      if (snap && Array.isArray(snap.excludes)) data.excludes = snap.excludes;
+      renderResults(data);
+      setStatus("");
+      showToast("Snapshot loaded.");
+    } catch (err) {
+      showToast(
+        "Could not load snapshot: " + (err && err.message ? err.message : err),
+        true
+      );
+    } finally {
+      e.target.value = "";
+    }
+  });
 
   const folderInput = document.getElementById("project-folder");
   const folderNameEl = document.getElementById("folder-name");
@@ -541,9 +745,17 @@
   }
 
   document.querySelectorAll('input[name="input-mode"]').forEach((radio) => {
-    radio.addEventListener("change", applyInputMode);
+    radio.addEventListener("change", () => {
+      applyInputMode();
+      saveSettings();
+    });
   });
   applyInputMode();
+
+  cancelBtn.addEventListener("click", () => {
+    cancelRequested = true;
+    setStatus("Cancelling...");
+  });
 
   document.getElementById("pick-folder").addEventListener("click", async () => {
     if (window.showDirectoryPicker) {
@@ -593,8 +805,11 @@
     const excludeText = document.getElementById("exclude-dirs").value;
     const excludeSet = buildExcludeSet(useDefaults, excludeText);
 
+    cancelRequested = false;
     runBtn.disabled = true;
     runBtn.textContent = "Running...";
+    cancelBtn.classList.remove("hidden");
+    showProgress();
 
     try {
       const pyodide = await ensurePyodide();
@@ -612,7 +827,9 @@
           : await populateFs(pyodide, selectedFiles, excludeSet));
       }
 
+      checkCancelled();
       setStatus("Running tools in your browser...");
+      setIndeterminate();
       await new Promise((r) => setTimeout(r, 0));
 
       const runFn = pyodide.globals.get("run_tools");
@@ -631,16 +848,26 @@
       setStatus("");
       showToast("Analysis complete — processed locally, nothing uploaded.");
     } catch (err) {
-      console.error(err);
       setStatus("");
-      showToast("Failed: " + (err && err.message ? err.message : err), true);
+      if (err && err.message === CANCELLED) {
+        showToast("Cancelled.");
+      } else {
+        console.error(err);
+        showToast("Failed: " + (err && err.message ? err.message : err), true);
+      }
     } finally {
       runBtn.disabled = false;
       runBtn.textContent = "Run Tools";
+      cancelBtn.classList.add("hidden");
+      hideProgress();
     }
   });
 
   function renderResults(data) {
+    lastData = data;
+    lastExcludeSet = new Set(Array.isArray(data.excludes) ? data.excludes : []);
+    setDownloadEnabled("save-snapshot", !!(data.structure || data.loader));
+
     // Structure
     if (data.structure) {
       currentStructure = data.structure;
@@ -710,4 +937,77 @@
       .join("");
     summaryEl.classList.remove("hidden");
   }
+
+  // ---- Settings persistence (localStorage) -----------------------------
+  function gatherSettings() {
+    return {
+      inputMode: getInputMode(),
+      runStructure: document.getElementById("run-structure").checked,
+      runLoader: document.getElementById("run-loader").checked,
+      useDefaults: document.getElementById("use-defaults").checked,
+      excludeDirs: document.getElementById("exclude-dirs").value,
+      corsProxy: corsProxyEl.value,
+      gitUrl: gitUrlEl.value,
+      showSize: document.getElementById("show-size").checked,
+      showModified: document.getElementById("show-modified").checked,
+      showExcluded: showExcludedEl.checked,
+      typeFilter: typeFilter.value,
+    };
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(gatherSettings()));
+    } catch (e) {
+      /* storage unavailable (private mode, quota) — non-fatal */
+    }
+  }
+  function loadSettings() {
+    let s;
+    try {
+      s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+    } catch (e) {
+      s = null;
+    }
+    if (!s) return;
+    const setChecked = (id, v) => {
+      if (typeof v === "boolean") document.getElementById(id).checked = v;
+    };
+    if (s.inputMode) {
+      const r = document.querySelector(
+        'input[name="input-mode"][value="' + s.inputMode + '"]'
+      );
+      if (r) r.checked = true;
+    }
+    setChecked("run-structure", s.runStructure);
+    setChecked("run-loader", s.runLoader);
+    setChecked("use-defaults", s.useDefaults);
+    setChecked("show-size", s.showSize);
+    setChecked("show-modified", s.showModified);
+    setChecked("show-excluded", s.showExcluded);
+    if (typeof s.excludeDirs === "string")
+      document.getElementById("exclude-dirs").value = s.excludeDirs;
+    if (typeof s.corsProxy === "string") corsProxyEl.value = s.corsProxy;
+    if (typeof s.gitUrl === "string") gitUrlEl.value = s.gitUrl;
+    if (typeof s.typeFilter === "string" && s.typeFilter)
+      pendingTypeFilter = s.typeFilter;
+    applyInputMode();
+  }
+
+  ["run-structure", "run-loader", "use-defaults"].forEach((id) =>
+    document.getElementById(id).addEventListener("change", saveSettings)
+  );
+  document.getElementById("exclude-dirs").addEventListener("input", saveSettings);
+  corsProxyEl.addEventListener("input", saveSettings);
+  gitUrlEl.addEventListener("input", saveSettings);
+
+  document.getElementById("reset-settings").addEventListener("click", () => {
+    try {
+      localStorage.removeItem(SETTINGS_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+    location.reload();
+  });
+
+  loadSettings();
 })();
