@@ -21,6 +21,13 @@ This tool is perfect for organizing large codebases, generating documentation, a
   - [Settings and Controls](#settings-and-controls)
   - [Output Files](#output-files)
   - [Advanced Features](#advanced-features)
+- [MCP Server (AI Agent Access)](#mcp-server-ai-agent-access)
+  - [What It Is](#what-it-is)
+  - [Installation](#mcp-installation)
+  - [Running the Server](#running-the-server)
+  - [Connecting an AI Client](#connecting-an-ai-client)
+  - [Available Tools](#available-tools)
+  - [Security Model](#security-model)
 - [Technical Details](#technical-details)
   - [Workflow Diagrams](#workflow-diagrams)
   - [File Processing](#file-processing)
@@ -202,6 +209,109 @@ Monitor real-time updates:
 - File processing status.
 - Logs for excluded/skipped files.
 - Errors or warnings.
+
+---
+
+## MCP Server (AI Agent Access)
+
+In addition to the desktop UI, the same core file-reading tools can be exposed to an
+AI assistant (such as Claude Desktop or an MCP-capable IDE agent) through a local
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP) server.
+
+### What It Is
+
+The MCP server (`mcp_server.py`) lets an AI agent call the project's tools directly —
+"show me the structure," "read this file," "concatenate this folder" — instead of you
+copy-pasting files into a chat. It:
+
+- Runs **entirely on your own machine** as a local program. There is no hosting, no
+  account, and no login.
+- Communicates with the AI client over **stdio** (a direct pipe between the two
+  programs). Nothing is sent over the network and **no data leaves your computer**.
+- Is **strictly read-only** — it can list and read files, but never write, delete, or
+  execute anything.
+
+It reuses the exact same `FileLoaderTool` and `ProjectStructureTool` as the desktop and
+web apps, so the results are identical.
+
+<a id="mcp-installation"></a>
+### Installation
+
+The MCP server requires **Python 3.10+** (for the `mcp` SDK) and an extra dependency
+file. The core tools themselves still run on Python 3.9+.
+
+```bash
+pip install -r requirements.txt -r requirements-mcp.txt
+```
+
+> Using `uv`? Install the optional `mcp` extra instead: `uv sync --extra mcp`.
+
+### Running the Server
+
+Point the server at one or more directories it is allowed to read with `--root`
+(repeatable). You normally do **not** run this command yourself — your AI client launches
+it for you (see the next section) — but you can run it directly to verify it starts:
+
+```bash
+python mcp_server.py --root /path/to/your/project
+```
+
+Alternatively, set the allowed roots via an environment variable:
+
+```bash
+TOOLS_MCP_ALLOWED_ROOTS=/path/to/project python mcp_server.py
+```
+
+Useful optional flags: `--exclude NAME` (extra directory name to skip, repeatable),
+`--max-files`, `--max-total-bytes`, `--max-file-bytes`, and `--max-depth` to tune the
+safety caps. Run `python mcp_server.py --help` for the full list.
+
+### Connecting an AI Client
+
+Your AI client starts the server for you; you just tell it the command to run. For
+**Claude Desktop**, add an entry to its `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "project-tools": {
+      "command": "python",
+      "args": [
+        "/absolute/path/to/mcp_server.py",
+        "--root",
+        "/absolute/path/to/your/project"
+      ]
+    }
+  }
+}
+```
+
+Use **absolute paths** for both `mcp_server.py` and each `--root`. Restart the client,
+and the tools below will appear automatically. Other MCP-capable clients (Cursor,
+Windsurf, VS Code agents, etc.) use the same `command` / `args` shape in their own
+config location.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_allowed_roots` | Returns the directories the server is permitted to read. |
+| `project_structure`  | Builds the nested folder/file tree (with metadata) for an allowed path. |
+| `load_directory`     | Concatenates the text files in an allowed directory. |
+| `read_file`          | Returns the contents of a single allowed file. |
+
+### Security Model
+
+Safety is enforced by `mcp_security.py`, independent of the MCP SDK:
+
+- **Allowed-roots jail** — the server can only touch paths inside the directories you
+  passed with `--root`. It resolves real paths to block `../` traversal and symlink
+  escapes that would point outside those roots.
+- **Secret-aware excludes** — sensitive files such as `.env`, `*.pem`, and private keys
+  are never returned, even when explicitly requested.
+- **Size and depth caps** — limits on file count, total bytes, per-file bytes, and
+  directory depth prevent runaway reads.
+- **Read-only** — no write, delete, or execute capability exists in any tool.
 
 ---
 
