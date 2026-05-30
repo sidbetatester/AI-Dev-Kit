@@ -269,15 +269,17 @@ The browser UI mirrors the desktop feature set, organized into a left **control 
 and a right **results area** with three tabs: **Structure**, **Concatenated files**, and
 **Logs**.
 
-> **Note:** The screenshots in this section are placeholders. Capture your own from a
-> running web app (<http://localhost:5000>) and drop them into `images/` using the file
-> names referenced below to replace them.
+> **Note:** The Main Interface screenshot below is a real capture of the running app.
+> The remaining three (tree view, toolbar, and logs) require a loaded project and are
+> placeholders for now — capture your own from a running web app
+> (<http://localhost:5000>) and drop them into `images/` using the file names referenced
+> below to replace them.
 
 <a id="main-interface-web"></a>
 #### Main Interface
 
 ![Web App — Main Interface](images/Screenshot_Web_1_Main.png)
-*Placeholder — the web app's landing screen showing the control panel.*
+*The web app's landing screen: the control panel on the left and the empty Structure tab on the right.*
 
 The left control panel offers:
 - **Source selection**: choose **Local folder** (pick a folder on your machine) or
