@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Tools Runner</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">PT</span>
+      <div>
+        <h1>Project Tools Runner</h1>
+        <p class="subtitle">Concatenate files &amp; visualize project structure — in your browser</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel controls">
+      <h2>Analyze a project</h2>
+      <form id="analyze-form">
+        <label class="field">
+          <span class="field-label">Project archive (.zip)</span>
+          <input type="file" id="project-file" name="project" accept=".zip" required />
+          <small class="hint">Zip your project folder and upload it. Max 100 MB.</small>
+        </label>
+
+        <fieldset class="field">
+          <legend>Tools</legend>
+          <label class="check"><input type="checkbox" id="run-structure" checked /> Project structure</label>
+          <label class="check"><input type="checkbox" id="run-loader" checked /> File loader (concatenate)</label>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>Excludes</legend>
+          <label class="check"><input type="checkbox" id="use-defaults" checked /> Use default excludes</label>
+          <textarea id="exclude-dirs" rows="3" placeholder="Comma-separated folder names to skip, e.g. tests, docs">{{ default_excludes }}</textarea>
+          <small class="hint">Folder names (not paths) to skip during the scan.</small>
+        </fieldset>
+
+        <button type="submit" id="run-btn" class="primary">Run Tools</button>
+      </form>
+
+      <div id="summary" class="summary hidden"></div>
+    </section>
+
+    <section class="panel results">
+      <div class="tabs">
+        <button class="tab active" data-tab="tree">Structure</button>
+        <button class="tab" data-tab="files">Concatenated files</button>
+        <button class="tab" data-tab="logs">Logs</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-tree">
+        <div class="toolbar">
+          <input type="search" id="tree-search" placeholder="Filter by name..." />
+          <label class="check inline"><input type="checkbox" id="show-size" checked /> Size</label>
+          <label class="check inline"><input type="checkbox" id="show-modified" checked /> Modified</label>
+          <button id="expand-all" class="ghost">Expand all</button>
+          <button id="collapse-all" class="ghost">Collapse all</button>
+          <button id="copy-ascii" class="ghost">Copy ASCII</button>
+          <a id="download-json" class="ghost disabled" href="#">Download JSON</a>
+        </div>
+        <div id="tree" class="tree-view">
+          <p class="empty">Run the tools to see your project structure here.</p>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-files">
+        <div class="toolbar">
+          <span id="files-stats" class="stats"></span>
+          <a id="download-text" class="ghost disabled" href="#">Download .txt</a>
+        </div>
+        <pre id="files-output" class="code-output"><span class="empty">Concatenated file contents will appear here.</span></pre>
+      </div>
+
+      <div class="tab-panel" id="tab-logs">
+        <div class="toolbar">
+          <a id="download-log" class="ghost disabled" href="#">Download log</a>
+        </div>
+        <pre id="logs-output" class="code-output"><span class="empty">Processing logs will appear here.</span></pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
