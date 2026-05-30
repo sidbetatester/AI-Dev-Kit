@@ -248,6 +248,28 @@ progress.progress:indeterminate { background: linear-gradient(90deg, var(--panel
   max-height: 65vh;
 }
 
+.tree-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 6px 20px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tree-head[hidden] { display: none; }
+.th-name { flex: 1; }
+.th-meta { min-width: 80px; text-align: right; }
+
 .node { user-select: none; }
 .node-row {
   display: flex;

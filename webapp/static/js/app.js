@@ -479,11 +479,21 @@
   }
 
   function renderTree() {
-    treeEl.innerHTML = "";
+    const treeHead = document.getElementById("tree-head");
+    // Clear previous content but keep the sticky column-header row in place.
+    Array.from(treeEl.children).forEach((c) => {
+      if (c !== treeHead) c.remove();
+    });
     if (!currentStructure) {
-      treeEl.innerHTML = '<p class="empty">Pick a folder and run the tools to see your project structure here.</p>';
+      const empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent =
+        "Pick a folder and run the tools to see your project structure here.";
+      treeEl.appendChild(empty);
+      if (treeHead) treeHead.hidden = true;
       return;
     }
+    if (treeHead) treeHead.hidden = false;
     const rootName = Object.keys(currentStructure)[0];
     treeEl.appendChild(renderNode(rootName, currentStructure[rootName], 0));
     applyColumnVisibility();
@@ -528,6 +538,10 @@
     const showMod = document.getElementById("show-modified").checked;
     treeEl.querySelectorAll(".meta-size").forEach((e) => (e.style.display = showSize ? "" : "none"));
     treeEl.querySelectorAll(".meta-modified").forEach((e) => (e.style.display = showMod ? "" : "none"));
+    const thSize = document.querySelector(".th-size");
+    const thMod = document.querySelector(".th-modified");
+    if (thSize) thSize.style.display = showSize ? "" : "none";
+    if (thMod) thMod.style.display = showMod ? "" : "none";
   }
 
   // ---- ASCII export -----------------------------------------------------
