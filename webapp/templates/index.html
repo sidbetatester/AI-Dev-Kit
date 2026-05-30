@@ -15,6 +15,10 @@
         <p class="subtitle">Concatenate files &amp; visualize project structure — runs entirely in your browser, nothing is uploaded</p>
       </div>
     </div>
+    <div class="header-actions">
+      <a class="ghost" href="https://github.com/sidbetatester/AI-Dev-Kit" target="_blank" rel="noopener" data-tip="View the source on GitHub">GitHub</a>
+      <button type="button" id="about-btn" class="ghost" data-tip="Information about this tool, author, and license.">About</button>
+    </div>
   </header>
 
   <main class="layout">
@@ -23,13 +27,13 @@
       <form id="analyze-form">
         <fieldset class="field">
           <legend>Source</legend>
-          <label class="check inline"><input type="radio" name="input-mode" value="local" checked /> Local folder</label>
-          <label class="check inline"><input type="radio" name="input-mode" value="git" /> Public Git URL</label>
+          <label class="check inline" data-tip="Scan a local project folder."><input type="radio" name="input-mode" value="local" checked /> Local folder</label>
+          <label class="check inline" data-tip="Clone and scan a public Git repository (GitHub/GitLab)."><input type="radio" name="input-mode" value="git" /> Public Git URL</label>
         </fieldset>
 
         <div class="field" id="local-field">
           <span class="field-label">Project folder</span>
-          <button type="button" id="pick-folder" class="ghost">Choose folder…</button>
+          <button type="button" id="pick-folder" class="ghost" data-tip="Select your top-level project folder.">Choose folder…</button>
           <span id="folder-name" class="folder-name">No folder selected</span>
           <input type="file" id="project-folder" webkitdirectory directory multiple hidden />
           <small class="hint">Pick a folder on your computer. Files are read and processed locally in this browser tab — they never leave your machine.</small>
@@ -37,7 +41,7 @@
 
         <div class="field hidden" id="git-field">
           <span class="field-label">Public repository URL</span>
-          <input type="url" id="git-url" class="text-input" placeholder="https://github.com/user/repo" />
+          <input type="url" id="git-url" class="text-input" placeholder="https://github.com/user/repo" data-tip="Enter a public repository URL (e.g., https://github.com/user/repo)." />
           <small class="hint">Public repositories only — no login or token. The repo is cloned directly in this browser tab over HTTPS; the files on your own machine are never uploaded. Larger repos are slower than picking a local folder.</small>
           <details class="advanced">
             <summary>Advanced: CORS proxy</summary>
@@ -48,24 +52,24 @@
 
         <fieldset class="field">
           <legend>Tools</legend>
-          <label class="check"><input type="checkbox" id="run-structure" checked /> Project structure</label>
-          <label class="check"><input type="checkbox" id="run-loader" checked /> File loader (concatenate)</label>
+          <label class="check" data-tip="Generate &amp; display a JSON project structure as an ASCII tree."><input type="checkbox" id="run-structure" checked /> Project structure</label>
+          <label class="check" data-tip="Concatenate all project files into a single text file."><input type="checkbox" id="run-loader" checked /> File loader (concatenate)</label>
         </fieldset>
 
         <fieldset class="field">
           <legend>Excludes</legend>
-          <label class="check"><input type="checkbox" id="use-defaults" checked /> Use default excludes</label>
+          <label class="check" data-tip="Skip common noise folders (.git, node_modules, build output, caches…)."><input type="checkbox" id="use-defaults" checked /> Use default excludes</label>
           <textarea id="exclude-dirs" rows="3" placeholder="Comma-separated folder names to skip, e.g. tests, docs">{{ default_excludes }}</textarea>
           <small class="hint">Folder names (not paths) to skip during the scan.</small>
         </fieldset>
 
         <div class="run-row">
-          <button type="submit" id="run-btn" class="primary">Run Tools</button>
-          <button type="button" id="cancel-btn" class="ghost hidden">Cancel</button>
+          <button type="submit" id="run-btn" class="primary" data-tip="Generate the concatenated file and/or JSON structure.">Run Tools</button>
+          <button type="button" id="cancel-btn" class="ghost hidden" data-tip="Stop the current run.">Cancel</button>
         </div>
         <progress id="progress" class="progress hidden"></progress>
         <p id="status" class="status-line"></p>
-        <button type="button" id="reset-settings" class="ghost subtle">Reset settings</button>
+        <button type="button" id="reset-settings" class="ghost subtle" data-tip="Reset source, tool selection, columns, and excludes to defaults.">Reset settings</button>
       </form>
 
       <div id="summary" class="summary hidden"></div>
@@ -110,14 +114,33 @@
 
       <div class="tab-panel" id="tab-logs">
         <div class="toolbar">
-          <button id="clear-logs" class="ghost">Clear</button>
-          <button id="copy-logs" class="ghost">Copy logs</button>
-          <button id="download-log" class="ghost disabled">Download log</button>
+          <button id="clear-logs" class="ghost" data-tip="Clear the console output area.">Clear</button>
+          <button id="copy-logs" class="ghost" data-tip="Copy the current console log to the clipboard.">Copy logs</button>
+          <button id="download-log" class="ghost disabled" data-tip="Download the processing log as a .log file.">Download log</button>
         </div>
         <pre id="logs-output" class="code-output"><span class="empty">Processing logs will appear here.</span></pre>
       </div>
     </section>
   </main>
+
+  <div id="about-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <div class="modal">
+      <button type="button" class="modal-close" id="about-close" aria-label="Close">&times;</button>
+      <div class="about-brand">
+        <span class="logo">PT</span>
+        <div>
+          <h2 id="about-title">Project Tools Runner</h2>
+          <p class="subtitle">Concatenate files &amp; visualize project structure</p>
+        </div>
+      </div>
+      <p class="about-text">A privacy-first toolkit for exploring a codebase: build an ASCII project tree and concatenate source files into a single document. Everything runs locally in your browser — your files are never uploaded.</p>
+      <dl class="about-meta">
+        <div><dt>Author</dt><dd>Siddharth Venkumahnati</dd></div>
+        <div><dt>License</dt><dd>MIT License</dd></div>
+        <div><dt>Source</dt><dd><a href="https://github.com/sidbetatester/AI-Dev-Kit" target="_blank" rel="noopener">github.com/sidbetatester/AI-Dev-Kit</a></dd></div>
+      </dl>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
 

@@ -1009,5 +1009,35 @@
     location.reload();
   });
 
+  // ---- About modal ------------------------------------------------------
+  const aboutModal = document.getElementById("about-modal");
+  const aboutBtn = document.getElementById("about-btn");
+  const aboutClose = document.getElementById("about-close");
+
+  const backgroundEls = [
+    document.querySelector(".app-header"),
+    document.querySelector(".layout"),
+  ].filter(Boolean);
+
+  function openAbout() {
+    aboutModal.classList.remove("hidden");
+    backgroundEls.forEach((el) => el.setAttribute("inert", ""));
+    aboutClose.focus();
+  }
+  function closeAbout() {
+    aboutModal.classList.add("hidden");
+    backgroundEls.forEach((el) => el.removeAttribute("inert"));
+    aboutBtn.focus();
+  }
+
+  aboutBtn.addEventListener("click", openAbout);
+  aboutClose.addEventListener("click", closeAbout);
+  aboutModal.addEventListener("click", (e) => {
+    if (e.target === aboutModal) closeAbout();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !aboutModal.classList.contains("hidden")) closeAbout();
+  });
+
   loadSettings();
 })();
