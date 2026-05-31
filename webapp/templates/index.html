@@ -24,6 +24,19 @@
   <main class="layout">
     <section class="panel controls">
       <h2>Analyze a project</h2>
+      <aside id="quick-start" class="quick-start" aria-labelledby="quick-start-title">
+        <div class="quick-start-head">
+          <h3 id="quick-start-title">Quick Start</h3>
+          <button type="button" id="hide-quick-start" class="ghost subtle">Got it</button>
+        </div>
+        <ol>
+          <li>Choose <strong>Local folder</strong> or a <strong>Public Git URL</strong>.</li>
+          <li>Select the tools to build a tree, concatenate text files, or both.</li>
+          <li>Review excludes so noisy folders like <code>.git</code> and <code>venv</code> stay out.</li>
+          <li>Click <strong>Run Tools</strong>, then inspect the Structure, Concatenated files, and Logs tabs.</li>
+        </ol>
+        <p>Local folders are processed in this browser tab. They are not uploaded.</p>
+      </aside>
       <form id="analyze-form">
         <fieldset class="field">
           <legend>Source</legend>
@@ -69,7 +82,10 @@
         </div>
         <progress id="progress" class="progress hidden"></progress>
         <p id="status" class="status-line"></p>
-        <button type="button" id="reset-settings" class="ghost subtle" data-tip="Reset source, tool selection, columns, and excludes to defaults.">Reset settings</button>
+        <div class="secondary-actions">
+          <button type="button" id="show-quick-start" class="ghost subtle hidden" data-tip="Show the first-time user guide again.">Show quick start</button>
+          <button type="button" id="reset-settings" class="ghost subtle" data-tip="Reset source, tool selection, columns, and excludes to defaults.">Reset settings</button>
+        </div>
       </form>
 
       <div id="summary" class="summary hidden"></div>
@@ -136,11 +152,35 @@
       <div class="about-brand">
         <span class="logo">PT</span>
         <div>
-          <h2 id="about-title">Project Tools Runner</h2>
-          <p class="subtitle">Concatenate files &amp; visualize project structure</p>
+          <h2 id="about-title">Project Tools Runner Help</h2>
+          <p class="subtitle">Web UI, desktop UI, and local MCP server</p>
         </div>
       </div>
-      <p class="about-text">A privacy-first toolkit for exploring a codebase: build an ASCII project tree and concatenate source files into a single document. Everything runs locally in your browser — your files are never uploaded.</p>
+      <p class="about-text">A privacy-first toolkit for exploring a codebase: build an ASCII-style project tree, concatenate readable files, and generate logs for review or AI-assisted workflows.</p>
+      <div class="about-sections">
+        <section>
+          <h3>Web UI</h3>
+          <p>This browser app analyzes a local folder or public Git URL, then shows the Structure, Concatenated files, and Logs tabs. Local folders are processed in your browser and are not uploaded.</p>
+        </section>
+        <section>
+          <h3>Desktop UI</h3>
+          <p>The Tkinter desktop app provides the same core tools for local workflows where you prefer a native window.</p>
+          <code>uv run python tool_runner_ui.py</code>
+        </section>
+        <section>
+          <h3>MCP Server</h3>
+          <p>The local MCP server exposes read-only project tools to MCP-capable AI clients with allowed-root and secret-file protections.</p>
+          <code>uv sync --extra mcp</code>
+          <code>uv run python mcp_server.py --root /path/to/project</code>
+        </section>
+        <section>
+          <h3>Get The App</h3>
+          <code>git clone https://github.com/sidbetatester/AI-Dev-Kit.git</code>
+          <code>cd AI-Dev-Kit</code>
+          <code>uv sync</code>
+          <code>uv run python webapp/app.py</code>
+        </section>
+      </div>
       <dl class="about-meta">
         <div><dt>Author</dt><dd>Siddharth Venkumahnati</dd></div>
         <div><dt>License</dt><dd>MIT License</dd></div>

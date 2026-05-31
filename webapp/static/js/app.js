@@ -28,6 +28,7 @@
   const typeFilter = document.getElementById("type-filter");
   const showExcludedEl = document.getElementById("show-excluded");
   const SETTINGS_KEY = "ptr-settings-v1";
+  const QUICK_START_KEY = "ptr-quick-start-hidden";
   const CANCELLED = "__cancelled__";
 
   // ---- Tabs -------------------------------------------------------------
@@ -1272,6 +1273,42 @@
     location.reload();
   });
 
+  // ---- First-run orientation --------------------------------------------
+  const quickStart = document.getElementById("quick-start");
+  const hideQuickStart = document.getElementById("hide-quick-start");
+  const showQuickStart = document.getElementById("show-quick-start");
+
+  function setQuickStartVisible(visible) {
+    quickStart.classList.toggle("hidden", !visible);
+    showQuickStart.classList.toggle("hidden", visible);
+  }
+
+  function loadQuickStartPreference() {
+    try {
+      setQuickStartVisible(localStorage.getItem(QUICK_START_KEY) !== "true");
+    } catch (e) {
+      setQuickStartVisible(true);
+    }
+  }
+
+  hideQuickStart.addEventListener("click", () => {
+    try {
+      localStorage.setItem(QUICK_START_KEY, "true");
+    } catch (e) {
+      /* storage unavailable — hide for this page view only */
+    }
+    setQuickStartVisible(false);
+  });
+
+  showQuickStart.addEventListener("click", () => {
+    try {
+      localStorage.removeItem(QUICK_START_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+    setQuickStartVisible(true);
+  });
+
   // ---- About modal ------------------------------------------------------
   const aboutModal = document.getElementById("about-modal");
   const aboutBtn = document.getElementById("about-btn");
@@ -1303,4 +1340,5 @@
   });
 
   loadSettings();
+  loadQuickStartPreference();
 })();

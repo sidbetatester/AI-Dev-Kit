@@ -69,6 +69,39 @@ body {
 
 .controls h2 { margin: 0 0 14px; font-size: 16px; }
 
+.quick-start {
+  background: rgba(76, 154, 255, 0.08);
+  border: 1px solid rgba(76, 154, 255, 0.32);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.quick-start-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.quick-start h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.quick-start ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12px;
+}
+.quick-start li { margin: 5px 0; }
+.quick-start p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.quick-start code { font-family: var(--mono); }
+
 .field { display: block; margin-bottom: 18px; border: 0; padding: 0; }
 fieldset.field { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 fieldset.field legend { padding: 0 6px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -210,6 +243,11 @@ button.primary:disabled { opacity: 0.6; cursor: progress; }
 
 .run-row { display: flex; gap: 8px; align-items: stretch; }
 .run-row .primary { flex: 1; }
+.secondary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 progress.progress {
   width: 100%;
@@ -407,7 +445,9 @@ label[data-tip]:focus-within::before { opacity: 1; }
 .modal {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 640px;
+  max-height: min(86vh, 760px);
+  overflow: auto;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -431,6 +471,38 @@ label[data-tip]:focus-within::before { opacity: 1; }
 .about-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .about-brand h2 { margin: 0; font-size: 18px; }
 .about-text { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+.about-sections {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.about-sections section {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.about-sections h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.about-sections p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.about-sections code {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-x: auto;
+}
 .about-meta { margin: 0; display: grid; gap: 10px; }
 .about-meta > div { display: flex; gap: 12px; font-size: 13px; }
 .about-meta dt { width: 64px; flex-shrink: 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; padding-top: 1px; }
