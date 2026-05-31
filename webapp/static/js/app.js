@@ -543,12 +543,17 @@
     return { files, folders };
   }
 
-  function makeRow(name, isDir, meta, depth, opts) {
+  function makeRow(name, isDir, meta, ancestors, opts) {
     opts = opts || {};
     const row = document.createElement("div");
     row.className = "node-row" + (opts.excluded ? " excluded-dir" : "");
-    row.style.paddingLeft = depth * 16 + "px";
     if (!isDir) row.dataset.ext = fileExt(name);
+
+    const prefix = document.createElement("span");
+    prefix.className = "tree-prefix";
+    prefix.setAttribute("aria-hidden", "true");
+    prefix.textContent = asciiPrefix(ancestors);
+    row.appendChild(prefix);
 
     const twisty = document.createElement("span");
     twisty.className = "twisty" + (isDir ? "" : " leaf");
@@ -561,7 +566,7 @@
 
     const label = document.createElement("span");
     label.className = "node-label";
-    label.textContent = name;
+    label.textContent = isDir ? name + "/" : name;
     label.dataset.text = name;
     nameEl.appendChild(label);
 
@@ -591,7 +596,7 @@
     return { row, twisty };
   }
 
-  function renderNode(name, node, depth) {
+  function renderNode(name, node, ancestors) {
     const container = document.createElement("div");
     container.className = "node";
 
@@ -601,7 +606,7 @@
       name,
       true,
       { size: counts.files + " files", created: "", modified: "" },
-      depth,
+      ancestors,
       { excluded: isExcluded }
     );
     container.appendChild(row);
@@ -610,24 +615,29 @@
     children.className = "children";
 
     const subs = node.subfolders || {};
-    Object.keys(subs)
-      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-      .forEach((key) => {
-        children.appendChild(renderNode(key, subs[key], depth + 1));
-      });
-
-    (node.files || [])
+    const subNames = Object.keys(subs).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
+    const files = (node.files || [])
       .slice()
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
-      .forEach((file) => {
-        const { row: fileRow } = makeRow(
-          file.name,
-          false,
-          { size: humanSize(file.size), created: file.created || "", modified: file.modified || "" },
-          depth + 1
-        );
-        children.appendChild(fileRow);
-      });
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    const totalChildren = subNames.length + files.length;
+
+    subNames.forEach((key, index) => {
+      const isLast = index === totalChildren - 1;
+      children.appendChild(renderNode(key, subs[key], ancestors.concat(isLast)));
+    });
+
+    files.forEach((file, index) => {
+      const isLast = subNames.length + index === totalChildren - 1;
+      const { row: fileRow } = makeRow(
+        file.name,
+        false,
+        { size: humanSize(file.size), created: file.created || "", modified: file.modified || "" },
+        ancestors.concat(isLast)
+      );
+      children.appendChild(fileRow);
+    });
 
     container.appendChild(children);
 
@@ -656,7 +666,7 @@
     }
     if (treeHead) treeHead.hidden = false;
     const rootName = Object.keys(currentStructure)[0];
-    treeEl.appendChild(renderNode(rootName, currentStructure[rootName], 0));
+    treeEl.appendChild(renderNode(rootName, currentStructure[rootName], []));
     applyColumnVisibility();
     populateTypeFilter();
     applyFilters();

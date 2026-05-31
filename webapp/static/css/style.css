@@ -256,7 +256,7 @@ progress.progress:indeterminate { background: linear-gradient(90deg, var(--panel
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 4px 6px 20px;
+  padding: 4px 4px 6px 18px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
@@ -274,13 +274,20 @@ progress.progress:indeterminate { background: linear-gradient(90deg, var(--panel
 .node-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 2px 4px;
   border-radius: 4px;
   white-space: nowrap;
 }
 .node-row:hover { background: var(--panel-2); }
 .node-row.hidden { display: none; }
+
+.tree-prefix {
+  color: var(--muted);
+  flex: 0 0 auto;
+  opacity: 0.85;
+  white-space: pre;
+}
 
 .twisty {
   width: 14px;
