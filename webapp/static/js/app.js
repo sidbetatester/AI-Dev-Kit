@@ -29,7 +29,29 @@
   const showExcludedEl = document.getElementById("show-excluded");
   const SETTINGS_KEY = "ptr-settings-v1";
   const QUICK_START_KEY = "ptr-quick-start-hidden";
+  const THEME_KEY = "ptr-theme";
   const CANCELLED = "__cancelled__";
+
+  const themeToggle = document.getElementById("theme-toggle");
+
+  function applyTheme(theme) {
+    const isLight = theme === "light";
+    document.body.classList.toggle("light-theme", isLight);
+    themeToggle.textContent = isLight ? "Dark mode" : "Light mode";
+    themeToggle.setAttribute("aria-pressed", String(isLight));
+  }
+
+  function loadThemePreference() {
+    let theme = "dark";
+    try {
+      theme = localStorage.getItem(THEME_KEY) || "dark";
+    } catch (e) {
+      /* storage unavailable — keep the default dark theme */
+    }
+    applyTheme(theme === "light" ? "light" : "dark");
+  }
+
+  loadThemePreference();
 
   // ---- Tabs -------------------------------------------------------------
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -1271,6 +1293,16 @@
       /* ignore */
     }
     location.reload();
+  });
+
+  themeToggle.addEventListener("click", () => {
+    const nextTheme = document.body.classList.contains("light-theme") ? "dark" : "light";
+    try {
+      localStorage.setItem(THEME_KEY, nextTheme);
+    } catch (e) {
+      /* storage unavailable — theme still changes for this page view */
+    }
+    applyTheme(nextTheme);
   });
 
   // ---- First-run orientation --------------------------------------------

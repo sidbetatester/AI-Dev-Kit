@@ -13,6 +13,20 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
+body.light-theme {
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --panel-2: #eef2f7;
+  --border: #d6dee8;
+  --text: #152033;
+  --muted: #5f6f82;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --green: #168a4a;
+  --amber: #b7791f;
+  --red: #c24135;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -49,6 +63,10 @@ body {
   color: #fff;
 }
 
+body.light-theme .logo {
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.18);
+}
+
 .app-header h1 { margin: 0; font-size: 20px; }
 .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 
@@ -70,8 +88,8 @@ body {
 .controls h2 { margin: 0 0 14px; font-size: 16px; }
 
 .quick-start {
-  background: rgba(76, 154, 255, 0.08);
-  border: 1px solid rgba(76, 154, 255, 0.32);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
   border-radius: 10px;
   padding: 12px;
   margin-bottom: 16px;
@@ -442,6 +460,7 @@ label[data-tip]:focus-within::before { opacity: 1; }
   padding: 20px;
   z-index: 100;
 }
+body.light-theme .modal-overlay { background: rgba(21, 32, 51, 0.36); }
 .modal {
   position: relative;
   width: 100%;
@@ -485,8 +504,8 @@ label[data-tip]:focus-within::before { opacity: 1; }
   padding: 12px;
 }
 .about-sections section.about-primary {
-  border-color: rgba(76, 154, 255, 0.32);
-  background: rgba(76, 154, 255, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
 }
 .about-sections h3 {
   margin: 0 0 6px;
