@@ -470,6 +470,8 @@ label[data-tip]:focus-within::before { opacity: 1; }
 .modal-close:hover { color: var(--text); background: var(--panel-2); }
 .about-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .about-brand h2 { margin: 0; font-size: 18px; }
+.about-brand a { color: var(--accent); text-decoration: none; }
+.about-brand a:hover { text-decoration: underline; }
 .about-text { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
 .about-sections {
   display: grid;
@@ -482,6 +484,10 @@ label[data-tip]:focus-within::before { opacity: 1; }
   border-radius: 10px;
   padding: 12px;
 }
+.about-sections section.about-primary {
+  border-color: rgba(76, 154, 255, 0.32);
+  background: rgba(76, 154, 255, 0.08);
+}
 .about-sections h3 {
   margin: 0 0 6px;
   font-size: 13px;
@@ -491,6 +497,9 @@ label[data-tip]:focus-within::before { opacity: 1; }
   font-size: 12px;
   margin: 0;
 }
+.about-sections p + p { margin-top: 6px; }
+.about-sections a { color: var(--accent); text-decoration: none; }
+.about-sections a:hover { text-decoration: underline; }
 .about-sections code {
   display: block;
   margin-top: 6px;

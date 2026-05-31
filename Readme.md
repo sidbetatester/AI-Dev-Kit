@@ -533,11 +533,19 @@ We welcome contributions! To contribute:
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **AI-Dev-Kit Source-Available License v1.0**.
+
+This means:
+- Source code is available to view and study.
+- Personal, non-commercial use of unmodified copies is allowed.
+- Modification, redistribution, public hosting, and commercial use require prior written permission.
+- Attribution and license notices must be preserved.
+
+See the [LICENSE](LICENSE) file for details.
 
 ---
 
-**Author**: [Siddharth Venkumahnati](https://github.com/sidbetatester)  
+**Author**: [Siddharth Venkumahanti](https://github.com/sidbetatester)  
 **Project**: Part of the [AI-Dev-Kit](https://github.com/sidbetatester/AI-Dev-Kit)
 
 > **Project Tools Runner**: Simplifying project management for developers and technical writers. 

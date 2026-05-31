@@ -2092,8 +2092,8 @@ class ToolRunnerUI(tk.Tk):
         messagebox.showinfo(
             "About Project Tools Runner",
             (
-                "Developed by Siddharth Venkumahnati.\n"
-                "Licensed under the MIT License.\n\n"
+                "Developed by Siddharth Venkumahanti.\n"
+                "Licensed under the AI-Dev-Kit Source-Available License v1.0.\n\n"
                 "GitHub: https://github.com/sidbetatester/AI-Dev-Kit"
             )
         )

@@ -17,6 +17,7 @@
     </div>
     <div class="header-actions">
       <a class="ghost" href="https://github.com/sidbetatester/AI-Dev-Kit" target="_blank" rel="noopener" data-tip="View the source on GitHub">GitHub</a>
+      <button type="button" id="theme-toggle" class="ghost" aria-pressed="false" data-tip="Switch between dark and light mode.">Light mode</button>
       <button type="button" id="about-btn" class="ghost" data-tip="Information about this tool, author, and license.">About</button>
     </div>
   </header>
@@ -152,38 +153,40 @@
       <div class="about-brand">
         <span class="logo">PT</span>
         <div>
-          <h2 id="about-title">Project Tools Runner Help</h2>
-          <p class="subtitle">Web UI, desktop UI, and local MCP server</p>
+          <h2 id="about-title">Project Tools Runner</h2>
+          <p class="subtitle">By <a href="https://github.com/sidbetatester" target="_blank" rel="noopener">Siddharth Venkumahanti</a> · Source-Available License v1.0</p>
         </div>
       </div>
       <p class="about-text">A privacy-first toolkit for exploring a codebase: build an ASCII-style project tree, concatenate readable files, and generate logs for review or AI-assisted workflows.</p>
       <div class="about-sections">
-        <section>
-          <h3>Web UI</h3>
+        <section class="about-primary">
+          <h3>Use This Web UI Now</h3>
           <p>This browser app analyzes a local folder or public Git URL, then shows the Structure, Concatenated files, and Logs tabs. Local folders are processed in your browser and are not uploaded.</p>
         </section>
         <section>
-          <h3>Desktop UI</h3>
-          <p>The Tkinter desktop app provides the same core tools for local workflows where you prefer a native window.</p>
-          <code>uv run python tool_runner_ui.py</code>
+          <h3>Get The Project From GitHub</h3>
+          <p>Clone the repository when you want to run it locally, use the desktop app, or connect the MCP server to an AI client.</p>
+          <p><a href="https://github.com/sidbetatester/AI-Dev-Kit" target="_blank" rel="noopener">github.com/sidbetatester/AI-Dev-Kit</a></p>
+          <code>git clone https://github.com/sidbetatester/AI-Dev-Kit.git</code>
+          <code>cd AI-Dev-Kit</code>
+          <code>uv sync</code>
         </section>
         <section>
-          <h3>MCP Server</h3>
-          <p>The local MCP server exposes read-only project tools to MCP-capable AI clients with allowed-root and secret-file protections.</p>
+          <h3>After Installing Locally</h3>
+          <p>Start the web app, launch the desktop UI, or expose the tools to an MCP-capable AI client.</p>
+          <code>uv run python webapp/app.py</code>
+          <code>uv run python tool_runner_ui.py</code>
           <code>uv sync --extra mcp</code>
           <code>uv run python mcp_server.py --root /path/to/project</code>
         </section>
         <section>
-          <h3>Get The App</h3>
-          <code>git clone https://github.com/sidbetatester/AI-Dev-Kit.git</code>
-          <code>cd AI-Dev-Kit</code>
-          <code>uv sync</code>
-          <code>uv run python webapp/app.py</code>
+          <h3>What Each Interface Is For</h3>
+          <p><strong>Web UI:</strong> browser-based project analysis with local-folder and public-Git modes.</p>
+          <p><strong>Desktop UI:</strong> native Tkinter workflow over the same core tools.</p>
+          <p><strong>MCP Server:</strong> local, read-only AI-agent access with allowed-root and secret-file protections.</p>
         </section>
       </div>
       <dl class="about-meta">
-        <div><dt>Author</dt><dd>Siddharth Venkumahnati</dd></div>
-        <div><dt>License</dt><dd>MIT License</dd></div>
         <div><dt>Source</dt><dd><a href="https://github.com/sidbetatester/AI-Dev-Kit" target="_blank" rel="noopener">github.com/sidbetatester/AI-Dev-Kit</a></dd></div>
       </dl>
     </div>

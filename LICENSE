@@ -1,21 +1,98 @@
-MIT License
+AI-Dev-Kit Source-Available License
+Version 1.0
 
-Copyright (c) 2025 Siddharth V
+Copyright (C) 2026 Siddharth Venkumahanti (https://github.com/sidbetatester)
+All rights reserved except as expressly granted below.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This license is source-available. It is not an open-source license as defined
+by the Open Source Initiative because it restricts modification, redistribution,
+and commercial use without prior written permission.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Definitions
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+"Software" means the AI-Dev-Kit / Project Tools Runner project, including
+source code, documentation, examples, assets, and related files.
+
+"You" means any individual or legal entity accessing or using the Software.
+
+"Commercial Use" means any use intended for or directed toward commercial
+advantage, monetary compensation, business operations, paid services,
+advertising-supported services, internal company use, resale, sublicensing,
+or use on behalf of a for-profit entity.
+
+"Modification" means any change, adaptation, translation, derivative work,
+or other alteration of the Software.
+
+2. Permitted Use
+
+Subject to this license, you may:
+
+- view and study the source code;
+- run an unmodified copy for personal, non-commercial use;
+- make a reasonable number of unmodified copies for personal backup or archival
+  purposes; and
+- share links to the official repository or official project page.
+
+3. Restrictions
+
+You may not do any of the following without prior written permission from
+Siddharth Venkumahanti:
+
+- use the Software for Commercial Use;
+- modify, adapt, translate, or create derivative works of the Software;
+- distribute, publish, sublicense, sell, rent, lease, or otherwise provide
+  copies of the Software to third parties;
+- host, mirror, embed, or make the Software available as a public or private
+  service for third parties;
+- remove or alter copyright, license, attribution, or permission notices;
+- use the Software to train machine learning models or create substantially
+  similar competing products; or
+- circumvent technical, licensing, or access controls associated with the
+  Software.
+
+4. Permission Requests
+
+To request permission for Commercial Use, modifications, redistribution,
+hosting, or other uses outside this license, contact:
+
+https://github.com/sidbetatester
+
+Permission must be granted in writing. Silence or lack of response does not
+grant permission.
+
+5. Contributions
+
+Unless otherwise agreed in writing, any contribution submitted to this project
+is licensed to Siddharth Venkumahanti under terms broad enough to use,
+modify, relicense, distribute, and commercialize the contribution as part of
+the Software. Do not submit contributions unless you have the right to do so.
+
+6. Ownership
+
+The Software is licensed, not sold. Siddharth Venkumahanti retains all right,
+title, and interest in and to the Software, including all intellectual property
+rights not expressly granted by this license.
+
+7. Third-Party Rights
+
+This license does not grant rights to third-party trademarks, services,
+platforms, browser APIs, hosting providers, AI tools, MCP clients, or content
+processed with the Software.
+
+8. Prior Versions
+
+This license applies to copies of the Software distributed with this license.
+Copies that were previously distributed under different license terms are not
+retroactively changed by this license.
+
+9. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+10. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, SIDDHARTH VENKUMAHANTI SHALL NOT BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO
+THE SOFTWARE OR ITS USE, WHETHER IN CONTRACT, TORT, OR OTHERWISE.

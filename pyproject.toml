@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Tkinter app to concatenate project files and visualize directory structures."
 readme = "Readme.md"
 requires-python = ">=3.9"
+license = { file = "LICENSE" }
 # Single source of truth for runtime dependencies. Covers the desktop app
 # (Tkinter UI + token_encryption) and the privacy-first web app (Flask static
 # host served by gunicorn). The requirements*.txt files are kept in sync as a
