@@ -1,5 +1,5 @@
 """
-Local, read-only MCP server exposing the Project Tools Runner core tools.
+Local, read-only MCP server exposing the Project Context Kit core tools.
 
 It wraps the unchanged core modules (``FileLoaderTool`` and
 ``ProjectStructureTool``) as Model Context Protocol tools so an AI agent running
@@ -50,7 +50,7 @@ from mcp_security import (
 )
 from project_structure_tool import ProjectStructureTool
 
-SERVER_NAME = "project-tools-runner"
+SERVER_NAME = "project-context-kit"
 
 
 def _stderr_logger(message: str) -> None:
@@ -258,7 +258,7 @@ def build_server(policy: AccessPolicy):
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Local, read-only MCP server exposing the Project Tools Runner core "
+            "Local, read-only MCP server exposing the Project Context Kit core "
             "tools to an AI agent. Runs over stdio; no data leaves your machine."
         )
     )

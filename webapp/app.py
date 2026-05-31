@@ -1,5 +1,5 @@
 """
-Web interface for the Project Tools Runner.
+Web interface for Project Context Kit.
 
 Privacy-first design: the browser reads a folder the user picks and runs the
 *actual* Python tools (file_loader_tool.py / project_structure_tool.py) entirely

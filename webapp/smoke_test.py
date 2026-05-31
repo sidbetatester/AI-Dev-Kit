@@ -1,5 +1,5 @@
 """
-Smoke test for the Project Tools Runner web app.
+Smoke test for the Project Context Kit web app.
 
 Proves the web re-verification objective without uploading anything:
 

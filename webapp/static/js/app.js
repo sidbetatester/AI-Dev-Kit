@@ -27,9 +27,9 @@
   const progressEl = document.getElementById("progress");
   const typeFilter = document.getElementById("type-filter");
   const showExcludedEl = document.getElementById("show-excluded");
-  const SETTINGS_KEY = "ptr-settings-v1";
-  const QUICK_START_KEY = "ptr-quick-start-hidden";
-  const THEME_KEY = "ptr-theme";
+  const SETTINGS_KEY = "pck-settings-v1";
+  const QUICK_START_KEY = "pck-quick-start-hidden";
+  const THEME_KEY = "pck-theme";
   const CANCELLED = "__cancelled__";
 
   const themeToggle = document.getElementById("theme-toggle");
@@ -951,7 +951,7 @@
       return;
     }
     const snap = {
-      type: "project-tools-runner-snapshot",
+      type: "project-context-kit-snapshot",
       version: 1,
       generatedAt: new Date().toISOString(),
       excludes: Array.from(lastExcludeSet),

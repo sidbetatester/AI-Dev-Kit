@@ -1,4 +1,4 @@
-# AI‑Dev‑Kit – Project Tools Runner
+# AI‑Dev‑Kit – Project Context Kit
 
 Incremental Delivery Plan (v0.1)
 

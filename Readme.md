@@ -1,6 +1,6 @@
-# Project Tools Runner
+# Project Context Kit
 
-**Project Tools Runner** is a versatile Tkinter-based desktop application for developers, technical writers, and project managers to streamline project management, analysis, and sharing. It offers a clean, intuitive interface to:
+**Project Context Kit** is a privacy-first toolkit for developers, technical writers, project managers, and AI-assisted workflows to turn a codebase into useful context. It offers a clean, intuitive interface to:
 
 1. **Concatenate Project Files**: Combine all text-based files in your project into a single `.txt` file for easy sharing, backups, or AI code reviews.
 2. **Visualize Project Structure**: Map your directory structure into an interactive, multi-column tree view enriched with file metadata like size, creation date, and last-modified date.
@@ -202,7 +202,7 @@ Key controls include:
 #### Copy Tree as Text
 - Generate a clean ASCII representation:
   ```plaintext
-  Project Tools Runner/
+  Project Context Kit/
   ├── file_loader.py
   ├── tool_runner_ui.py
   ├── requirements.txt
@@ -423,7 +423,7 @@ Your AI client starts the server for you; you just tell it the command to run. F
 ```json
 {
   "mcpServers": {
-    "project-tools": {
+    "project-context-kit": {
       "command": "python",
       "args": [
         "/absolute/path/to/mcp_server.py",
@@ -533,7 +533,7 @@ We welcome contributions! To contribute:
 
 ## License
 
-This project is licensed under the **AI-Dev-Kit Source-Available License v1.0**.
+This project is licensed under the **Project Context Kit Source-Available License v1.0**.
 
 This means:
 - Source code is available to view and study.
@@ -548,6 +548,6 @@ See the [LICENSE](LICENSE) file for details.
 **Author**: [Siddharth Venkumahanti](https://github.com/sidbetatester)  
 **Project**: Part of the [AI-Dev-Kit](https://github.com/sidbetatester/AI-Dev-Kit)
 
-> **Project Tools Runner**: Simplifying project management for developers and technical writers. 
+> **Project Context Kit**: Turning projects into clear, shareable, AI-ready context. 
 
 ---

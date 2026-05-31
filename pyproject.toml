@@ -1,7 +1,7 @@
 [project]
-name = "project-tools-runner"
+name = "project-context-kit"
 version = "0.1.0"
-description = "Tkinter app to concatenate project files and visualize directory structures."
+description = "Privacy-first toolkit to build project context from local folders and public repositories."
 readme = "Readme.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }

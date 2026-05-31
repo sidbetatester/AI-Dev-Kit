@@ -208,7 +208,7 @@ class ToolRunnerUI(tk.Tk):
         """
         super().__init__()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.title("Project Tools Runner")
+        self.title("Project Context Kit")
         self.geometry("900x600")
 
         # Threading/progress state
@@ -2090,10 +2090,10 @@ class ToolRunnerUI(tk.Tk):
         Shows an 'About' dialog with author/license info.
         """
         messagebox.showinfo(
-            "About Project Tools Runner",
+            "About Project Context Kit",
             (
                 "Developed by Siddharth Venkumahanti.\n"
-                "Licensed under the AI-Dev-Kit Source-Available License v1.0.\n\n"
+                "Licensed under the Project Context Kit Source-Available License v1.0.\n\n"
                 "GitHub: https://github.com/sidbetatester/AI-Dev-Kit"
             )
         )
