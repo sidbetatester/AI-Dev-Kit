@@ -154,7 +154,7 @@ def test_get_file_rules() -> None:
         root = _make_tree(tmp)
         policy = sec.build_policy(roots=[str(root)])
         check(
-            srv.get_file(policy, str(root / "README.md")) == "# title\n",
+            srv.get_file(policy, str(root / "README.md")).replace("\r\n", "\n") == "# title\n",
             "get_file returns text content",
         )
         expect_error(

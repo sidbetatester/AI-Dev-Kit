@@ -269,11 +269,8 @@ The browser UI mirrors the desktop feature set, organized into a left **control 
 and a right **results area** with three tabs: **Structure**, **Concatenated files**, and
 **Logs**.
 
-> **Note:** The Main Interface screenshot below is a real capture of the running app.
-> The remaining three (tree view, toolbar, and logs) require a loaded project and are
-> placeholders for now — capture your own from a running web app
-> (<http://localhost:5000>) and drop them into `images/` using the file names referenced
-> below to replace them.
+> **Note:** The screenshots below are captures of the running web app analyzing a
+> public GitHub repository entirely in the browser.
 
 <a id="main-interface-web"></a>
 #### Main Interface
@@ -293,19 +290,24 @@ The left control panel offers:
 <a id="project-tree-view-web"></a>
 #### Project Tree View
 
-![Web App — Project Tree View](images/Screenshot_Web_2_Tree.png)
-*Placeholder — the Structure tab with the populated, multi-column tree.*
+![Web App — Public Git URL and Project Tree](images/Screenshot_Web_1_git_and_tree.png)
+*The web app analyzing a public GitHub repository entirely in the browser and rendering
+the populated, multi-column project tree.*
 
 The **Structure** tab shows the same interactive tree as the desktop app:
-- Expandable folders with **file counts** for each directory.
-- Metadata columns for **size**, **created**, and **modified** timestamps.
+- Expandable folders with **file counts** for each directory and ASCII-style hierarchy
+  guides for readability.
+- Metadata columns for **size**, **created**, and **modified** timestamps. Creation dates
+  are shown only when the browser source can provide them; otherwise the **Created**
+  toggle is disabled and the column is hidden.
 - **Sticky column headers** that stay visible while you scroll.
 
 <a id="toolbar-controls-web"></a>
 #### Toolbar Controls
 
-![Web App — Toolbar Controls](images/Screenshot_Web_3_Controls.png)
-*Placeholder — the Structure tab toolbar (search, filters, toggles, and export buttons).*
+![Web App — Toolbar Controls](images/Screenshot_Web_1_structure_toolbar.png)
+*The Structure tab toolbar with search, type filters, metadata toggles, expand/collapse,
+ASCII export, JSON download, and snapshot actions.*
 
 The toolbar above the tree provides:
 - **Search by name** and **filter by file type** in real time.
@@ -323,8 +325,11 @@ sessions.
 <a id="concatenated-files-and-logs-web"></a>
 #### Concatenated Files and Logs
 
-![Web App — Concatenated Files and Logs](images/Screenshot_Web_4_Logs.png)
-*Placeholder — the Concatenated files and Logs tabs.*
+![Web App — Logs](images/Screenshot_Web_1_cosole_logs.png)
+*The Logs tab showing processing output, skipped binary files, and generated output paths.*
+
+![Web App — Concatenated Files](images/Screenshot_Web_1_concatinated_files.png)
+*The Concatenated files tab showing the generated text output preview and download action.*
 
 - The **Concatenated files** tab shows the combined text output (the same content the
   File loader writes), ready to copy or download.

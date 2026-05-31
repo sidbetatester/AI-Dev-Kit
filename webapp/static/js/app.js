@@ -667,6 +667,7 @@
     if (treeHead) treeHead.hidden = false;
     const rootName = Object.keys(currentStructure)[0];
     treeEl.appendChild(renderNode(rootName, currentStructure[rootName], []));
+    updateCreatedColumnAvailability();
     applyColumnVisibility();
     populateTypeFilter();
     applyFilters();
@@ -704,9 +705,33 @@
     pendingTypeFilter = null;
   }
 
+  function hasCreatedMetadata(node) {
+    if (!node) return false;
+    if ((node.files || []).some((file) => !!file.created)) return true;
+    const subs = node.subfolders || {};
+    return Object.keys(subs).some((key) => hasCreatedMetadata(subs[key]));
+  }
+
+  function updateCreatedColumnAvailability() {
+    const createdToggle = document.getElementById("show-created");
+    const createdLabel = createdToggle.closest("label");
+    const root = currentStructure ? currentStructure[Object.keys(currentStructure)[0]] : null;
+    const available = hasCreatedMetadata(root);
+
+    createdToggle.disabled = !available;
+    if (!available) createdToggle.checked = false;
+    if (createdLabel) {
+      createdLabel.classList.toggle("disabled", !available);
+      createdLabel.dataset.tip = available
+        ? "Show each file's creation date in the tree."
+        : "Creation dates are not available for this source.";
+    }
+  }
+
   function applyColumnVisibility() {
     const showSize = document.getElementById("show-size").checked;
-    const showCreated = document.getElementById("show-created").checked;
+    const createdToggle = document.getElementById("show-created");
+    const showCreated = !createdToggle.disabled && createdToggle.checked;
     const showMod = document.getElementById("show-modified").checked;
     treeEl.querySelectorAll(".meta-size").forEach((e) => (e.style.display = showSize ? "" : "none"));
     treeEl.querySelectorAll(".meta-created").forEach((e) => (e.style.display = showCreated ? "" : "none"));
