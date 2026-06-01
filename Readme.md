@@ -135,8 +135,11 @@ python tool_runner_ui.py
 ## Usage Guide
 
 ### Main Interface
-
+Old Screenshot:
 ![Main Interface](images/Screenshot_Project_Tools_Runner_1.png)
+
+New Screenshot:
+![Main Interface](images/Screenshot_Project_Context_Kit_1.png)
 
 The main window offers:
 - **Directory Selection**: Choose the project root and output directory.
